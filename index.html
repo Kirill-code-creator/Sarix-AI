@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuralChat — AI Assistant v5.0</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- ═══ MathJax для отображения формул LaTeX ═══ -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <style>
+    /* ══════════════════════════════════════════════
+       СБРОС И ПЕРЕМЕННЫЕ
+    ══════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-deep:        #020408;
+      --accent-cyan:    #00f5ff;
+      --accent-purple:  #a855f7;
+      --accent-pink:    #ec4899;
+      --accent-green:   #22d3ee;
+      --glass-bg:       rgba(8, 14, 28, 0.72);
+      --glass-border:   rgba(0, 245, 255, 0.18);
+      --glass-hover:    rgba(0, 245, 255, 0.08);
+      --text-primary:   #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted:     #475569;
+      --user-bubble:    rgba(168, 85, 247, 0.22);
+      --ai-bubble:      rgba(0, 245, 255, 0.08);
+      --danger:         #ef4444;
+      --success:        #10b981;
+      --warning:        #f59e0b;
+      --font-main:      'Segoe UI', system-ui, -apple-system, sans-serif;
+      --font-mono:      'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      --radius-lg:      16px;
+      --radius-md:      10px;
+      --blur-glass:     blur(20px) saturate(180%);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-deep);
+      font-family: var(--font-main);
+      color: var(--text-primary);
+    }
+
+    /* ══ 3D CANVAS ══ */
+    #three-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ══ LAYOUT ══ */
+    #app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px 16px 16px;
+      gap: 12px;
+    }
+
+    /* ══ ШАПКА ══ */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      flex-shrink: 0;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 12px; }
+
+    .logo-orb {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink), var(--accent-cyan));
+      animation: spin 4s linear infinite;
+      box-shadow: 0 0 20px rgba(0,245,255,0.5);
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .header-title {
+      font-size: 22px; font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; letter-spacing: -0.5px;
+    }
+
+    .header-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* v5.0: Бейдж выбранной модели в шапке */
+    #model-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(0, 245, 255, 0.08);
+      border: 1px solid rgba(0, 245, 255, 0.25);
+      border-radius: 20px;
+      font-size: 11px;
+      color: var(--accent-cyan);
+      font-family: var(--font-mono);
+      transition: all 0.4s ease;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #model-badge.routing {
+      border-color: rgba(168, 85, 247, 0.4);
+      color: var(--accent-purple);
+      animation: badgePulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* ══ КНОПКИ ══ */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--glass-border);
+      background: var(--glass-bg);
+      color: var(--text-primary);
+      font-size: 13px; font-family: var(--font-main);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+    .btn:hover {
+      background: var(--glass-hover); border-color: var(--accent-cyan);
+      color: var(--accent-cyan); box-shadow: 0 0 12px rgba(0,245,255,0.2);
+      transform: translateY(-1px);
+    }
+    .btn:active { transform: translateY(0); }
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(0,245,255,0.2), rgba(168,85,247,0.2));
+      border-color: rgba(0,245,255,0.4);
+    }
+    .btn-danger  { border-color: rgba(239,68,68,0.4); color: var(--danger); }
+    .btn-danger:hover {
+      background: rgba(239,68,68,0.15); border-color: var(--danger);
+      color: var(--danger); box-shadow: 0 0 12px rgba(239,68,68,0.3);
+    }
+    .btn-icon { padding: 8px; font-size: 16px; }
+
+    /* ══ ЧАТЬ-ОБЛАСТЬ ══ */
+    #chat-area {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 14px;
+      padding: 4px 2px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0,245,255,0.2) transparent;
+    }
+    #chat-area::-webkit-scrollbar { width: 4px; }
+    #chat-area::-webkit-scrollbar-track { background: transparent; }
+    #chat-area::-webkit-scrollbar-thumb { background: rgba(0,245,255,0.2); border-radius: 2px; }
+
+    /* ══ ПУСТОЕ СОСТОЯНИЕ ══ */
+    #empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; color: var(--text-muted);
+      text-align: center; padding: 40px;
+    }
+    .empty-icon { font-size: 64px; opacity: 0.3; }
+    .empty-title { font-size: 24px; font-weight: 600; color: var(--text-secondary); }
+    .empty-hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+    .hint-chip {
+      padding: 8px 14px;
+      background: var(--glass-bg); backdrop-filter: blur(10px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px; font-size: 13px; color: var(--text-secondary);
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .hint-chip:hover {
+      border-color: var(--accent-purple); color: var(--accent-purple);
+      box-shadow: 0 0 10px rgba(168,85,247,0.2);
+    }
+
+    /* ══ СООБЩЕНИЯ ══ */
+    .message {
+      display: flex; gap: 10px;
+      animation: msgIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .message.user { flex-direction: row-reverse; }
+
+    .msg-avatar {
+      width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; border: 1px solid var(--glass-border);
+    }
+    .message.user .msg-avatar {
+      background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(236,72,153,0.3));
+      border-color: rgba(168,85,247,0.4);
+    }
+    .message.assistant .msg-avatar {
+      background: linear-gradient(135deg, rgba(0,245,255,0.2), rgba(34,211,238,0.2));
+      border-color: rgba(0,245,255,0.3);
+      animation: pulseAvatar 3s ease-in-out infinite;
+    }
+    @keyframes pulseAvatar {
+      0%, 100% { box-shadow: 0 0 6px rgba(0,245,255,0.3); }
+      50%       { box-shadow: 0 0 16px rgba(0,245,255,0.6); }
+    }
+
+    .msg-bubble {
+      max-width: 78%; padding: 14px 18px;
+      border-radius: var(--radius-lg); border: 1px solid var(--glass-border);
+      backdrop-filter: blur(10px);
+      font-size: 14.5px; line-height: 1.65;
+      overflow-wrap: break-word; /* Для длинных формул */
+    }
+    .message.user .msg-bubble {
+      background: var(--user-bubble);
+      border-color: rgba(168,85,247,0.3);
+      border-bottom-right-radius: 4px;
+    }
+    .message.assistant .msg-bubble {
+      background: var(--ai-bubble);
+      border-bottom-left-radius: 4px;
+    }
+
+    /* Markdown */
+    .msg-bubble p { margin-bottom: 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { margin: 12px 0 6px; color: var(--accent-cyan); }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin-bottom: 8px; }
+    .msg-bubble li { margin-bottom: 4px; }
+    .msg-bubble code:not(pre code) {
+      font-family: var(--font-mono); font-size: 13px;
+      background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
+      padding: 2px 6px; border-radius: 4px; color: var(--accent-green);
+    }
+    .msg-bubble pre { margin: 10px 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+    .msg-bubble pre code { display: block; padding: 14px; font-size: 13px; font-family: var(--font-mono); overflow-x: auto; }
+    .msg-bubble blockquote { border-left: 3px solid var(--accent-purple); padding-left: 12px; color: var(--text-secondary); margin: 8px 0; }
+    .msg-bubble table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+    .msg-bubble th, .msg-bubble td { border: 1px solid var(--glass-border); padding: 8px 12px; text-align: left; }
+    .msg-bubble th { background: rgba(0,245,255,0.08); color: var(--accent-cyan); }
+
+    /* ═══ MathJax display-формулы (чтобы не вылезали) ═══ */
+    .msg-bubble .mjx-container {
+      font-size: 1.05em;
+      overflow-x: auto;
+      max-width: 100%;
+      margin: 0.5em 0;
+    }
+
+    /* v5.0: Маленький бейдж с именем модели под ответом ассистента */
+    .msg-model-badge {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      font-family: var(--font-mono);
+      opacity: 0.7;
+    }
+
+    /* Typing */
+    .typing-indicator { display: inline-flex; gap: 4px; padding: 4px 0; }
+    .typing-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent-cyan);
+      animation: typingBounce 1.2s ease-in-out infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30%            { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* Tool-сообщения */
+    .tool-message {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-radius: var(--radius-md);
+      font-size: 13px; border: 1px solid;
+      animation: msgIn 0.3s ease both;
+      backdrop-filter: blur(10px);
+    }
+    .tool-message.executing  { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--warning); }
+    .tool-message.auto-approved { background: rgba(34,211,238,0.08); border-color: rgba(34,211,238,0.25); color: var(--accent-green); }
+    .tool-message.result-ok  { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.3); color: var(--success); }
+    .tool-message.result-err { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--danger); }
+    .tool-message.rejected   { background: rgba(100,116,139,0.1); border-color: rgba(100,116,139,0.3); color: var(--text-muted); }
+    .tool-command-text { font-family: var(--font-mono); font-size: 12px; opacity: 0.8; }
+
+    /* Usage badge */
+    .usage-badge { font-size: 11px; color: var(--text-muted); text-align: right; padding: 2px 4px; }
+
+    /* ══ ПОЛЕ ВВОДА ══ */
+    #input-area {
+      flex-shrink: 0;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 12px 14px;
+      display: flex; gap: 10px; align-items: flex-end;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #input-area:focus-within {
+      border-color: rgba(0,245,255,0.4);
+      box-shadow: 0 0 20px rgba(0,245,255,0.1);
+    }
+
+    #message-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text-primary); font-size: 14.5px; font-family: var(--font-main);
+      line-height: 1.5; resize: none; max-height: 150px; min-height: 24px;
+      scrollbar-width: none;
+    }
+    #message-input::placeholder { color: var(--text-muted); }
+
+    /* v5.0: Кнопка микрофона */
+    #mic-btn {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(236,72,153,0.15));
+      color: var(--accent-purple);
+      font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      position: relative;
+    }
+    #mic-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(236,72,153,0.3));
+      box-shadow: 0 0 14px rgba(168,85,247,0.4);
+      transform: scale(1.08);
+    }
+    #mic-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Состояние записи: пульсирующий красный */
+    #mic-btn.recording {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(239, 68, 68, 0.2);
+      animation: micPulse 1s ease-in-out infinite;
+    }
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+      50%       { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+    }
+
+    #send-btn {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 1px solid rgba(0,245,255,0.4);
+      background: linear-gradient(135deg, rgba(0,245,255,0.2), rgba(168,85,247,0.2));
+      color: var(--accent-cyan); font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease; flex-shrink: 0;
+    }
+    #send-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(0,245,255,0.35), rgba(168,85,247,0.35));
+      box-shadow: 0 0 16px rgba(0,245,255,0.4); transform: scale(1.08);
+    }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ══ ПАНЕЛЬ НАСТРОЕК ══ */
+    #settings-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    #settings-overlay.open { opacity: 1; pointer-events: all; }
+
+    #settings-panel {
+      position: fixed; top: 0; right: 0;
+      height: 100vh; width: 380px; max-width: 100vw;
+      background: rgba(4, 8, 20, 0.95);
+      backdrop-filter: blur(30px) saturate(200%);
+      border-left: 1px solid var(--glass-border);
+      padding: 28px 24px;
+      display: flex; flex-direction: column; gap: 20px;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 101; overflow-y: auto;
+    }
+    #settings-panel.open { transform: translateX(0); }
+
+    .settings-header { display: flex; justify-content: space-between; align-items: center; }
+    .settings-title {
+      font-size: 18px; font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .settings-group { display: flex; flex-direction: column; gap: 8px; }
+    .settings-label { font-size: 12px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.8px; }
+    .settings-input, .settings-textarea {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md); color: var(--text-primary);
+      font-size: 13.5px; font-family: var(--font-main);
+      padding: 10px 14px; transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none; width: 100%;
+    }
+    .settings-input:focus, .settings-textarea:focus {
+      border-color: rgba(0,245,255,0.4); box-shadow: 0 0 12px rgba(0,245,255,0.1);
+    }
+    .settings-textarea { resize: vertical; min-height: 100px; font-size: 13px; line-height: 1.5; }
+    .settings-hint { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
+    .settings-divider { border: none; border-top: 1px solid var(--glass-border); }
+    .settings-save-btn {
+      width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
+      background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(168,85,247,0.25));
+      border: 1px solid rgba(0,245,255,0.4);
+      border-radius: var(--radius-md); color: var(--accent-cyan);
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .settings-save-btn:hover {
+      background: linear-gradient(135deg, rgba(0,245,255,0.35), rgba(168,85,247,0.35));
+      box-shadow: 0 0 20px rgba(0,245,255,0.3);
+    }
+
+    /* v5.0: Блок Auto-Routing в настройках */
+    .routing-info-box {
+      background: rgba(0, 245, 255, 0.05);
+      border: 1px solid rgba(0, 245, 255, 0.2);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .routing-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .routing-category {
+      width: 80px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .routing-arrow { color: var(--accent-cyan); opacity: 0.5; }
+    .routing-model { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+
+    /* ══ CONFIRMATION GATE ══ */
+    #confirm-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    }
+    #confirm-overlay.open { opacity: 1; pointer-events: all; }
+
+    #confirm-modal {
+      background: rgba(4, 10, 24, 0.96);
+      border: 1px solid rgba(0,245,255,0.35);
+      border-radius: 20px; padding: 32px;
+      max-width: 520px; width: calc(100% - 32px);
+      box-shadow:
+        0 0 0 1px rgba(0,245,255,0.1),
+        0 0 40px rgba(0,245,255,0.15),
+        0 0 80px rgba(168,85,247,0.1),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      transform: scale(0.9) translateY(20px);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative; overflow: hidden;
+    }
+    #confirm-overlay.open #confirm-modal { transform: scale(1) translateY(0); }
+
+    #confirm-modal::before, #confirm-modal::after {
+      content: ''; position: absolute; width: 100px; height: 100px;
+      border-radius: 50%; pointer-events: none;
+    }
+    #confirm-modal::before { top: -40px; left: -40px; background: radial-gradient(circle, rgba(0,245,255,0.15), transparent 70%); }
+    #confirm-modal::after  { bottom: -40px; right: -40px; background: radial-gradient(circle, rgba(168,85,247,0.15), transparent 70%); }
+
+    /* v5.0: Варианты бейджа — обычный и опасный */
+    .confirm-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    .confirm-badge.warning  { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: var(--warning); }
+    .confirm-badge.danger   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.5);  color: var(--danger); }
+
+    .confirm-title  { font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+    .confirm-desc   { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
+
+    .confirm-command-box {
+      background: rgba(0,0,0,0.5); border: 1px solid rgba(0,245,255,0.2);
+      border-radius: var(--radius-md); padding: 16px; margin-bottom: 24px; position: relative;
+    }
+    /* v5.0: Красная рамка для опасных команд */
+    .confirm-command-box.dangerous { border-color: rgba(239,68,68,0.4); }
+
+    .confirm-command-label { font-size: 11px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+    .confirm-command-text  { font-family: var(--font-mono); font-size: 14px; color: #a8ff78; word-break: break-all; line-height: 1.6; }
+    .confirm-ai-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; padding: 10px 14px; background: rgba(168,85,247,0.08); border-left: 3px solid var(--accent-purple); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+    .confirm-actions { display: flex; gap: 12px; }
+
+    .confirm-btn {
+      flex: 1; padding: 13px; border-radius: var(--radius-md);
+      font-size: 15px; font-weight: 700; cursor: pointer; border: 1px solid;
+      transition: all 0.2s ease; font-family: var(--font-main); letter-spacing: 0.3px;
+    }
+    .confirm-btn-allow {
+      background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(5,150,105,0.25));
+      border-color: rgba(16,185,129,0.6); color: #34d399;
+    }
+    .confirm-btn-allow:hover {
+      background: linear-gradient(135deg, rgba(16,185,129,0.4), rgba(5,150,105,0.4));
+      box-shadow: 0 0 20px rgba(16,185,129,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+    .confirm-btn-reject {
+      background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(185,28,28,0.2));
+      border-color: rgba(239,68,68,0.5); color: #f87171;
+    }
+    .confirm-btn-reject:hover {
+      background: linear-gradient(135deg, rgba(239,68,68,0.35), rgba(185,28,28,0.35));
+      box-shadow: 0 0 20px rgba(239,68,68,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+
+    /* ══ TOAST ══ */
+    #toast-container {
+      position: fixed; bottom: 90px; right: 20px;
+      z-index: 300; display: flex; flex-direction: column;
+      gap: 8px; pointer-events: none;
+    }
+    .toast {
+      padding: 12px 18px; border-radius: var(--radius-md);
+      font-size: 13.5px; border: 1px solid;
+      backdrop-filter: blur(20px);
+      animation: toastIn 0.3s ease both; max-width: 280px;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .toast.success { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.4); color: #34d399; }
+    .toast.error   { background: rgba(239,68,68,0.15);  border-color: rgba(239,68,68,0.4);  color: #f87171; }
+    .toast.info    { background: rgba(0,245,255,0.1);   border-color: rgba(0,245,255,0.3);   color: var(--accent-cyan); }
+
+    @media (max-width: 600px) {
+      #app { padding: 8px; }
+      .msg-bubble { max-width: 90%; font-size: 14px; }
+      #settings-panel { width: 100vw; }
+      .header-title { font-size: 18px; }
+      #model-badge { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="three-canvas"></canvas>
+
+<div id="app">
+
+  <!-- Шапка -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo-orb"></div>
+      <div>
+        <div class="header-title">NeuralChat</div>
+        <div class="header-subtitle">v5.0 · Auto-Routing · Tool Use · Voice</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <!-- v5.0: Бейдж текущей модели (вместо выпадающего списка) -->
+      <div id="model-badge" title="Модель выбирается автоматически оркестратором">
+        🤖 Auto-Routing
+      </div>
+      <button class="btn btn-icon" id="clear-btn" title="Очистить историю">🗑️</button>
+      <button class="btn btn-primary" id="settings-btn">⚙️ Настройки</button>
+    </div>
+  </header>
+
+  <!-- Область чата -->
+  <div id="chat-area">
+    <div id="empty-state">
+      <div class="empty-icon">🌐</div>
+            <div class="empty-title">NeuralChat v5.0 готов к работе</div>
+      <p style="color:var(--text-muted);font-size:14px;">
+        Умный роутинг моделей · Долгосрочная память · Голосовой ввод · Управление ПК
+      </p>
+      <div class="empty-hints">
+        <div class="hint-chip" onclick="useHint(this)">📁 Покажи файлы в текущей папке</div>
+        <div class="hint-chip" onclick="useHint(this)">💻 Какая версия Python установлена?</div>
+        <div class="hint-chip" onclick="useHint(this)">🖱️ Открой Калькулятор Windows</div>
+        <div class="hint-chip" onclick="useHint(this)">🔢 Реши интеграл от x² dx</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Поле ввода -->
+  <div id="input-area">
+    <textarea
+      id="message-input"
+      placeholder="Сообщение... (Enter — отправить, Shift+Enter — новая строка)"
+      rows="1"
+    ></textarea>
+    <!-- v5.0: Кнопка микрофона (Web Speech API) -->
+    <button id="mic-btn" title="Голосовой ввод (Web Speech API)">🎤</button>
+    <button id="send-btn" title="Отправить (Enter)">➤</button>
+  </div>
+
+</div>
+
+<!-- Панель настроек -->
+<div id="settings-overlay"></div>
+<div id="settings-panel">
+  <div class="settings-header">
+    <div class="settings-title">⚙️ Настройки</div>
+    <button class="btn btn-icon" id="settings-close-btn">✕</button>
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">🔑 API-ключ OpenRouter</label>
+    <input
+      type="password"
+      id="api-key-input"
+      class="settings-input"
+      placeholder="sk-or-v1-..."
+    />
+    <p class="settings-hint">
+      Получите ключ на
+      <a href="https://openrouter.ai/keys" target="_blank"
+         style="color:var(--accent-cyan)">openrouter.ai/keys</a>.
+      Ключ хранится только в localStorage браузера.
+    </p>
+  </div>
+
+  <hr class="settings-divider"/>
+
+  <!-- v5.0: Информация об Auto-Routing вместо выпадающего списка моделей -->
+  <div class="settings-group">
+    <label class="settings-label">🤖 Умный роутинг моделей</label>
+    <div class="routing-info-box">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
+        Оркестратор <span style="color:var(--accent-cyan);font-family:var(--font-mono)">gemini-3.1-flash-lite-preview</span>
+        автоматически выбирает лучшую модель под каждый запрос:
+      </div>
+      <div class="routing-row">
+        <span class="routing-category">🔢 Математика</span>
+        <span class="routing-arrow">→</span>
+        <span class="routing-model">deepseek/deepseek-v4-pro</span>
+      </div>
+      <div class="routing-row">
+        <span class="routing-category">💻 Код / Агент</span>
+        <span class="routing-arrow">→</span>
+        <span class="routing-model">anthropic/claude-4.6-sonnet</span>
+      </div>
+      <div class="routing-row">
+        <span class="routing-category">🖼️ Изображения</span>
+        <span class="routing-arrow">→</span>
+        <span class="routing-model">google/gemini-3.1-pro-preview</span>
+      </div>
+      <div class="routing-row">
+        <span class="routing-category">💬 Разговор</span>
+        <span class="routing-arrow">→</span>
+        <span class="routing-model">x-ai/grok-4.3</span>
+      </div>
+    </div>
+    <p class="settings-hint">
+      Выбор модели происходит автоматически. Текущая модель отображается в шапке.
+    </p>
+  </div>
+
+  <hr class="settings-divider"/>
+
+  <div class="settings-group">
+    <label class="settings-label">📝 Системный промпт</label>
+    <textarea
+      id="system-prompt-input"
+      class="settings-textarea"
+      placeholder="Описание роли и поведения ассистента..."
+    >Ты — мощный AI-ассистент NeuralChat. Ты можешь выполнять команды в терминале и управлять компьютером (мышь, клавиатура). Всегда отвечай на языке пользователя. Будь лаконичен и точен.</textarea>
+  </div>
+
+  <hr class="settings-divider"/>
+
+  <div class="settings-group">
+    <label class="settings-label">🧠 Контекстное окно</label>
+    <p class="settings-hint">
+      В API отправляются последние
+      <strong style="color:var(--accent-cyan)">10 сообщений</strong>.
+      Полная история сохраняется в <code style="color:var(--accent-green);font-family:var(--font-mono)">chats.db</code>
+      и восстанавливается при перезапуске.
+    </p>
+  </div>
+
+  <hr class="settings-divider"/>
+
+  <div class="settings-group">
+    <label class="settings-label">🎤 Голосовой ввод</label>
+    <p class="settings-hint">
+      Используется встроенный Web Speech API браузера.
+      Нажмите кнопку 🎤 рядом с полем ввода, произнесите текст —
+      он автоматически вставится в поле. Повторное нажатие останавливает запись.
+      <br><br>
+      ⚠️ Требуется Chromium-браузер (Edge / Chrome). В Firefox не поддерживается.
+    </p>
+  </div>
+
+  <button class="settings-save-btn" id="settings-save-btn">💾 Сохранить настройки</button>
+</div>
+
+<!-- Confirmation Gate -->
+<div id="confirm-overlay">
+  <div id="confirm-modal">
+    <div class="confirm-badge warning" id="confirm-badge">⚠️ ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ</div>
+    <div class="confirm-title" id="confirm-title">Выполнение команды в терминале</div>
+    <div class="confirm-desc" id="confirm-desc">
+      AI-ассистент запрашивает разрешение на выполнение команды.
+      Внимательно проверьте перед подтверждением.
+    </div>
+    <div class="confirm-command-box" id="confirm-command-box">
+      <div class="confirm-command-label">$ Команда</div>
+      <div class="confirm-command-text" id="confirm-command-text">—</div>
+    </div>
+    <div class="confirm-ai-desc" id="confirm-ai-desc">Нет описания</div>
+    <div class="confirm-actions">
+      <button class="confirm-btn confirm-btn-allow" id="confirm-allow-btn">✓ Разрешить</button>
+      <button class="confirm-btn confirm-btn-reject" id="confirm-reject-btn">✕ Отклонить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// THREE.JS — анимированная нейронная сеть (без изменений из v4.1)
+// ════════════════════════════════════════════════════════════════
+(function initThreeScene() {
+  const canvas   = document.getElementById('three-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.z = 80;
+
+  const PARTICLE_COUNT  = 200;
+  const CONNECTION_DIST = 22;
+  const SPHERE_RADIUS   = 50;
+
+  const particlesGeo = new THREE.BufferGeometry();
+  const positions    = new Float32Array(PARTICLE_COUNT * 3);
+  const velocities   = [];
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos(2 * Math.random() - 1);
+    const r     = SPHERE_RADIUS * (0.3 + Math.random() * 0.7);
+    positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = r * Math.cos(phi);
+    velocities.push(
+      (Math.random() - 0.5) * 0.04,
+      (Math.random() - 0.5) * 0.04,
+      (Math.random() - 0.5) * 0.02
+    );
+  }
+
+  particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const particlesMat = new THREE.PointsMaterial({
+    color: 0x00f5ff, size: 0.8, transparent: true, opacity: 0.7, sizeAttenuation: true,
+  });
+  const particles = new THREE.Points(particlesGeo, particlesMat);
+  scene.add(particles);
+
+  const maxConnections = PARTICLE_COUNT * 4;
+  const linePositions  = new Float32Array(maxConnections * 6);
+  const lineColors     = new Float32Array(maxConnections * 6);
+  const linesGeo       = new THREE.BufferGeometry();
+  linesGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+  linesGeo.setAttribute('color',    new THREE.BufferAttribute(lineColors, 3));
+
+  const linesMat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.3,
+    blending: THREE.AdditiveBlending,
+  });
+  const lines = new THREE.LineSegments(linesGeo, linesMat);
+  scene.add(lines);
+
+  const mouse = { nx: 0, ny: 0 };
+  document.addEventListener('mousemove', (e) => {
+    mouse.nx = (e.clientX / window.innerWidth)  * 2 - 1;
+    mouse.ny = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+
+  const clock       = new THREE.Clock();
+  const colorCyan   = new THREE.Color(0x00f5ff);
+  const colorPurple = new THREE.Color(0xa855f7);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const pos = particlesGeo.attributes.position.array;
+
+    particles.rotation.y = clock.getElapsedTime() * 0.04 + mouse.nx * 0.2;
+    particles.rotation.x = mouse.ny * 0.15;
+    lines.rotation.y     = particles.rotation.y;
+    lines.rotation.x     = particles.rotation.x;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      pos[i*3]   += velocities[i*3];
+      pos[i*3+1] += velocities[i*3+1];
+      pos[i*3+2] += velocities[i*3+2];
+      const d = Math.sqrt(pos[i*3]**2 + pos[i*3+1]**2 + pos[i*3+2]**2);
+      if (d > SPHERE_RADIUS || d < SPHERE_RADIUS * 0.2) {
+        velocities[i*3] *= -1; velocities[i*3+1] *= -1; velocities[i*3+2] *= -1;
+      }
+    }
+    particlesGeo.attributes.position.needsUpdate = true;
+
+    let connCount = 0;
+    const lp = linesGeo.attributes.position.array;
+    const lc = linesGeo.attributes.color.array;
+
+    for (let i = 0; i < PARTICLE_COUNT && connCount < maxConnections - 10; i++) {
+      const ax = pos[i*3], ay = pos[i*3+1], az = pos[i*3+2];
+      for (let j = i+1; j < PARTICLE_COUNT && connCount < maxConnections - 1; j++) {
+        const dx = ax-pos[j*3], dy = ay-pos[j*3+1], dz = az-pos[j*3+2];
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < CONNECTION_DIST) {
+          const alpha = 1 - dist / CONNECTION_DIST;
+          const b = connCount * 6;
+          lp[b]=ax; lp[b+1]=ay; lp[b+2]=az;
+          lp[b+3]=pos[j*3]; lp[b+4]=pos[j*3+1]; lp[b+5]=pos[j*3+2];
+          const mc = colorCyan.clone().lerp(colorPurple, dist / CONNECTION_DIST);
+          lc[b]=mc.r*alpha; lc[b+1]=mc.g*alpha; lc[b+2]=mc.b*alpha;
+          lc[b+3]=mc.r*alpha; lc[b+4]=mc.g*alpha; lc[b+5]=mc.b*alpha;
+          connCount++;
+        }
+      }
+    }
+    for (let i = connCount*6; i < maxConnections*6; i++) { lp[i]=0; lc[i]=0; }
+    linesGeo.attributes.position.needsUpdate = true;
+    linesGeo.attributes.color.needsUpdate    = true;
+    linesGeo.setDrawRange(0, connCount * 2);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+
+
+// ════════════════════════════════════════════════════════════════
+// СОСТОЯНИЕ ПРИЛОЖЕНИЯ
+// ════════════════════════════════════════════════════════════════
+const state = {
+  // session_id теперь берётся из localStorage чтобы переживать перезагрузки
+  // и давать фронтенду возможность восстановить историю из БД
+  sessionId:    getOrCreateSessionId(),
+  apiKey:       '',
+  systemPrompt: '',
+  isGenerating: false,
+  currentConfirmCallId: null,
+  currentConfirmDangerous: false,
+  // v5.0: текущая выбранная оркестратором модель
+  currentModel: null,
+};
+
+/** Создаёт или восстанавливает session_id из localStorage. */
+function getOrCreateSessionId() {
+  const key = 'neuralchat_session_id';
+  let sid = localStorage.getItem(key);
+  if (!sid) {
+    sid = 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem(key, sid);
+  }
+  return sid;
+}
+
+// ── DOM-элементы ──
+const $chatArea        = document.getElementById('chat-area');
+const $emptyState      = document.getElementById('empty-state');
+const $msgInput        = document.getElementById('message-input');
+const $sendBtn         = document.getElementById('send-btn');
+const $micBtn          = document.getElementById('mic-btn');
+const $clearBtn        = document.getElementById('clear-btn');
+const $settingsBtn     = document.getElementById('settings-btn');
+const $settingsClose   = document.getElementById('settings-close-btn');
+const $settingsSave    = document.getElementById('settings-save-btn');
+const $settingsOverlay = document.getElementById('settings-overlay');
+const $settingsPanel   = document.getElementById('settings-panel');
+const $confirmOverlay  = document.getElementById('confirm-overlay');
+const $confirmBadge    = document.getElementById('confirm-badge');
+const $confirmTitle    = document.getElementById('confirm-title');
+const $confirmDesc     = document.getElementById('confirm-desc');
+const $confirmCmdBox   = document.getElementById('confirm-command-box');
+const $confirmCommand  = document.getElementById('confirm-command-text');
+const $confirmAiDesc   = document.getElementById('confirm-ai-desc');
+const $confirmAllow    = document.getElementById('confirm-allow-btn');
+const $confirmReject   = document.getElementById('confirm-reject-btn');
+const $modelBadge      = document.getElementById('model-badge');
+
+
+// ════════════════════════════════════════════════════════════════
+// НАСТРОЙКИ
+// ════════════════════════════════════════════════════════════════
+function loadSettings() {
+  const saved = JSON.parse(localStorage.getItem('neuralchat_settings') || '{}');
+  state.apiKey       = saved.apiKey       || '';
+  state.systemPrompt = saved.systemPrompt ||
+    'Ты — мощный AI-ассистент NeuralChat. Ты можешь выполнять команды в терминале и управлять компьютером (мышь, клавиатура). Всегда отвечай на языке пользователя. Будь лаконичен и точен.';
+
+  document.getElementById('api-key-input').value      = state.apiKey;
+  document.getElementById('system-prompt-input').value = state.systemPrompt;
+}
+
+function saveSettings() {
+  state.apiKey       = document.getElementById('api-key-input').value.trim();
+  state.systemPrompt = document.getElementById('system-prompt-input').value.trim();
+  localStorage.setItem('neuralchat_settings', JSON.stringify({
+    apiKey:       state.apiKey,
+    systemPrompt: state.systemPrompt,
+  }));
+  showToast('✅ Настройки сохранены', 'success');
+  closeSettings();
+}
+
+loadSettings();
+
+function openSettings()  { $settingsPanel.classList.add('open'); $settingsOverlay.classList.add('open'); }
+function closeSettings() { $settingsPanel.classList.remove('open'); $settingsOverlay.classList.remove('open'); }
+
+$settingsBtn.addEventListener('click', openSettings);
+$settingsClose.addEventListener('click', closeSettings);
+$settingsOverlay.addEventListener('click', closeSettings);
+$settingsSave.addEventListener('click', saveSettings);
+
+
+// ════════════════════════════════════════════════════════════════
+// TOAST-УВЕДОМЛЕНИЯ
+// ════════════════════════════════════════════════════════════════
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    setTimeout(() => toast.remove(), 400);
+  }, duration);
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// v5.0: БЕЙДЖ МОДЕЛИ В ШАПКЕ
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Обновляет бейдж в шапке.
+ *
+ * @param {string|null} model   — Название модели или null для "Auto-Routing"
+ * @param {boolean}     routing — true пока оркестратор думает (пульсация)
+ */
+function updateModelBadge(model, routing = false) {
+  if (routing) {
+    $modelBadge.textContent = '🔀 Выбираю модель...';
+    $modelBadge.classList.add('routing');
+    return;
+  }
+  $modelBadge.classList.remove('routing');
+  if (model) {
+    // Показываем только короткое имя (после последнего "/")
+    const shortName = model.split('/').pop();
+    $modelBadge.textContent = `✨ ${shortName}`;
+    $modelBadge.title = `Выбрано оркестратором: ${model}`;
+  } else {
+    $modelBadge.textContent = '🤖 Auto-Routing';
+    $modelBadge.title = 'Модель выбирается автоматически оркестратором';
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// РЕНДЕРИНГ СООБЩЕНИЙ
+// ════════════════════════════════════════════════════════════════
+marked.setOptions({
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+  gfm:    true,
+});
+
+function appendUserMessage(text) {
+  hideEmptyState();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'message user';
+  wrapper.innerHTML = `
+    <div class="msg-avatar">🧑</div>
+    <div class="msg-bubble">${escapeHtml(text).replace(/\n/g,'<br>')}</div>`;
+  $chatArea.appendChild(wrapper);
+  scrollToBottom();
+  return wrapper;
+}
+
+/**
+ * Создаёт placeholder для ответа ассистента.
+ * Возвращает объект { wrapper, bubble } для последующего заполнения.
+ */
+function appendAssistantMessage() {
+  hideEmptyState();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'message assistant';
+  wrapper.innerHTML = `
+    <div class="msg-avatar">🤖</div>
+    <div class="msg-content-wrap">
+      <div class="msg-bubble">
+        <div class="typing-indicator">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>
+      </div>
+      <div class="msg-model-badge" style="display:none;"></div>
+    </div>`;
+
+  // Выравниваем flex-контейнер для аватара и контента
+  wrapper.style.alignItems = 'flex-start';
+  const contentWrap = wrapper.querySelector('.msg-content-wrap');
+  contentWrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-width:78%;';
+
+  $chatArea.appendChild(wrapper);
+  scrollToBottom();
+
+  const bubble     = wrapper.querySelector('.msg-bubble');
+  const modelBadge = wrapper.querySelector('.msg-model-badge');
+  return { wrapper, bubble, modelBadge };
+}
+
+/** Вставляет Markdown-контент в bubble, подсвечивает код и рендерит MathJax. */
+// ════════════════════════════════════════════════════════════════
+// РЕНДЕРИНГ СООБЩЕНИЙ С БРОНЕЙ ДЛЯ ФОРМУЛ
+// ════════════════════════════════════════════════════════════════
+marked.setOptions({
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+  gfm:    true,
+});
+
+/** Умный парсер: спасает формулы LaTeX от поломки внутри Marked.js */
+/** Умный парсер: спасает формулы LaTeX от поломки внутри Marked.js */
+function renderSafeMarkdown(text) {
+  const mathBlocks = [];
+  
+  // 1. Вырезаем и прячем дисплейные формулы ($$...$$ и \[...\])
+  let safeText = text.replace(/(\$\$|\\\[)([\s\S]*?)(\$\$|\\\])/g, (match) => {
+    mathBlocks.push(match);
+    return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+  });
+  
+  // 2. Вырезаем и прячем инлайн формулы ($...$ и \(...\))
+  safeText = safeText.replace(/(\$|\\\()([\s\S]*?)(\$|\\\))/g, (match) => {
+    mathBlocks.push(match);
+    return `@@MATH_INLINE_${mathBlocks.length - 1}@@`;
+  });
+
+  // 3. Рендерим Markdown
+  let html = marked.parse(safeText);
+
+  // 4. Возвращаем целые формулы на их законные места
+  html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (m, i) => mathBlocks[i]);
+  html = html.replace(/@@MATH_INLINE_(\d+)@@/g, (m, i) => mathBlocks[i]);
+
+  return html;
+}
+
+function appendUserMessage(text) {
+  hideEmptyState();
+  const wrapper = document.createElement('div');
+  wrapper.className = 'message user';
+  // Загоняем текст юзера тоже через безопасный рендер, чтобы работали абзацы и математика
+  wrapper.innerHTML = `
+    <div class="msg-avatar">🧑</div>
+    <div class="msg-bubble">${renderSafeMarkdown(text)}</div>`;
+  $chatArea.appendChild(wrapper);
+  if (window.MathJax) MathJax.typesetPromise([wrapper]);
+  scrollToBottom();
+  return wrapper;
+}
+
+// ... функция appendAssistantMessage() остается без изменений ...
+
+/** Вставляет Markdown-контент в bubble, подсвечивает код и рендерит MathJax. */
+function setAssistantContent(bubble, markdownText) {
+  // Используем наш безопасный парсер
+  bubble.innerHTML = renderSafeMarkdown(markdownText);
+  
+  // Подсвечиваем синтаксис кода
+  bubble.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  
+  // Запускаем MathJax
+  if (window.MathJax) {
+    MathJax.typesetPromise([bubble]).catch(err => console.warn('MathJax render error:', err));
+  }
+  scrollToBottom();
+}
+
+/** Показывает под сообщением бейдж с именем использованной модели. */
+function setMessageModelBadge(modelBadgeEl, model) {
+  if (!model) return;
+  const shortName = model.split('/').pop();
+  modelBadgeEl.textContent = `via ${shortName}`;
+  modelBadgeEl.style.display = 'block';
+}
+
+/** Добавляет системное уведомление об инструменте. */
+function appendToolMessage(icon, htmlText, type) {
+  const el = document.createElement('div');
+  el.className = `tool-message ${type}`;
+  el.innerHTML = `<span>${icon}</span><span>${htmlText}</span>`;
+  $chatArea.appendChild(el);
+  scrollToBottom();
+  return el;
+}
+
+function appendUsageBadge(usage) {
+  const el = document.createElement('div');
+  el.className = 'usage-badge';
+  const modelStr = usage.model ? ` · ${usage.model.split('/').pop()}` : '';
+  el.textContent =
+    `🔢 Токены: ${usage.prompt_tokens} вх. + ${usage.completion_tokens} вых. = ${usage.total_tokens}${modelStr}`;
+  $chatArea.appendChild(el);
+}
+
+function hideEmptyState() {
+  if ($emptyState) $emptyState.style.display = 'none';
+}
+
+function scrollToBottom() {
+  $chatArea.scrollTop = $chatArea.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// v5.0: ВОССТАНОВЛЕНИЕ ИСТОРИИ ПРИ ЗАГРУЗКЕ
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Загружает историю текущей сессии с бэкенда и отрисовывает её в чате.
+ * Вызывается один раз при старте приложения.
+ */
+async function loadChatHistory() {
+  try {
+    const resp = await fetch(`/history/${state.sessionId}`);
+    if (!resp.ok) return;
+
+    const data = await resp.json();
+    const messages = data.messages || [];
+
+    if (messages.length === 0) return;
+
+    // Есть история — скрываем empty state и рендерим сообщения
+    hideEmptyState();
+
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        appendUserMessage(msg.content);
+      } else if (msg.role === 'assistant' && msg.content) {
+        const { bubble, modelBadge } = appendAssistantMessage();
+        setAssistantContent(bubble, msg.content);
+        // Модель не сохраняется в истории — просто скрываем бейдж
+        modelBadge.style.display = 'none';
+      }
+    }
+
+    showToast(`📖 Восстановлено ${messages.length} сообщений`, 'info', 2500);
+  } catch (err) {
+    // Не критично — просто начинаем чистую сессию
+    console.warn('Не удалось загрузить историю:', err);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// CONFIRMATION GATE
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Показывает модальное окно подтверждения.
+ *
+ * @param {string}  callId      — ID вызова инструмента
+ * @param {string}  command     — Текст команды
+ * @param {string}  description — Описание от AI
+ * @param {boolean} dangerous   — Подсвечивать как опасную команду
+ */
+function showConfirmGate(callId, command, description, dangerous = false) {
+  state.currentConfirmCallId    = callId;
+  state.currentConfirmDangerous = dangerous;
+
+  $confirmCommand.textContent  = command;
+  $confirmAiDesc.textContent   = `💬 AI объясняет: ${description}`;
+
+  // v5.0: Визуально разделяем опасные и обычные команды
+  if (dangerous) {
+    $confirmBadge.textContent = '🚨 ОПАСНАЯ КОМАНДА';
+    $confirmBadge.className   = 'confirm-badge danger';
+    $confirmTitle.textContent = 'Потенциально опасное действие';
+    $confirmDesc.textContent  =
+      'Эта команда может нанести вред системе. Убедитесь в её безопасности перед выполнением.';
+    $confirmCmdBox.classList.add('dangerous');
+  } else {
+    $confirmBadge.textContent = '⚠️ ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ';
+    $confirmBadge.className   = 'confirm-badge warning';
+    $confirmTitle.textContent = 'Выполнение команды';
+    $confirmDesc.textContent  =
+      'AI-ассистент запрашивает разрешение на выполнение действия. Проверьте перед подтверждением.';
+    $confirmCmdBox.classList.remove('dangerous');
+  }
+
+  $confirmOverlay.classList.add('open');
+}
+
+function closeConfirmGate() {
+  $confirmOverlay.classList.remove('open');
+  state.currentConfirmCallId    = null;
+  state.currentConfirmDangerous = false;
+}
+
+async function sendToolDecision(approved) {
+  const callId = state.currentConfirmCallId;
+  if (!callId) return;
+  closeConfirmGate();
+
+  try {
+    const r = await fetch('/tool-decision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: callId, approved }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    showToast(approved ? '✅ Разрешено' : '🚫 Отклонено', approved ? 'success' : 'info');
+  } catch (err) {
+    console.error('Ошибка отправки решения:', err);
+    showToast(`❌ ${err.message}`, 'error');
+  }
+}
+
+$confirmAllow.addEventListener('click', () => sendToolDecision(true));
+$confirmReject.addEventListener('click', () => sendToolDecision(false));
+$confirmOverlay.addEventListener('click', (e) => {
+  if (e.target === $confirmOverlay) sendToolDecision(false);
+});
+
+
+// ════════════════════════════════════════════════════════════════
+// ОТПРАВКА СООБЩЕНИЯ И ОБРАБОТКА SSE
+// ════════════════════════════════════════════════════════════════
+
+async function sendMessage() {
+  const text = $msgInput.value.trim();
+  if (!text || state.isGenerating) return;
+
+  if (!state.apiKey) {
+    showToast('⚠️ Введите API-ключ в настройках', 'error');
+    openSettings();
+    return;
+  }
+
+  state.isGenerating = true;
+  $sendBtn.disabled  = true;
+  $msgInput.value    = '';
+  autoResizeTextarea();
+
+  appendUserMessage(text);
+  const { bubble: assistantBubble, modelBadge: msgModelBadge } = appendAssistantMessage();
+
+  // Показываем анимацию роутинга в шапке
+  updateModelBadge(null, true);
+
+  try {
+    const response = await fetch('/chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id:    state.sessionId,
+        message:       text,
+        api_key:       state.apiKey,
+        model:         'auto',   // Модель выбирается на бэкенде
+        system_prompt: state.systemPrompt,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    const reader  = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let   buffer  = '';
+    let   selectedModel = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Остаток неполной строки
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+
+        let event;
+        try { event = JSON.parse(jsonStr); }
+        catch (e) { console.warn('Ошибка парсинга SSE:', jsonStr); continue; }
+
+        // v5.0: Обработка события выбора модели оркестратором
+        if (event.type === 'model_selected') {
+          selectedModel = event.model;
+          state.currentModel = event.model;
+          updateModelBadge(event.model, false);
+          continue;
+        }
+
+        await handleSSEEvent(event, assistantBubble, msgModelBadge, selectedModel);
+
+        // Обновляем selectedModel если он изменился внутри цикла
+        if (event.type === 'usage' && event.model) {
+          selectedModel = event.model;
+        }
+      }
+    }
+
+  } catch (err) {
+    console.error('Ошибка запроса:', err);
+    assistantBubble.innerHTML = `
+      <div style="color:var(--danger)">
+        ❌ <strong>Ошибка:</strong> ${escapeHtml(err.message)}
+      </div>`;
+    showToast(`❌ ${err.message}`, 'error');
+    updateModelBadge(null, false);
+  } finally {
+    state.isGenerating = false;
+    $sendBtn.disabled  = false;
+    $msgInput.focus();
+  }
+}
+
+/**
+ * Диспетчер SSE-событий.
+ * Обрабатывает каждое событие из потока и обновляет UI.
+ */
+async function handleSSEEvent(event, assistantBubble, msgModelBadge, selectedModel) {
+  switch (event.type) {
+
+    case 'thinking':
+      // Индикатор набора уже отображается по умолчанию
+      break;
+
+    // v5.0: Безопасная команда выполняется автоматически
+    case 'tool_auto_approved':
+      appendToolMessage(
+        '⚡',
+        `<strong>Авто-выполнение:</strong> <span class="tool-command-text">${escapeHtml(event.command)}</span>`,
+        'auto-approved'
+      );
+      // Восстанавливаем индикатор набора пока ждём результата
+      assistantBubble.innerHTML = `
+        <div class="typing-indicator">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>`;
+      break;
+
+    case 'tool_request':
+      // Убираем индикатор "думает" — ждём решения пользователя
+      if (assistantBubble.querySelector('.typing-indicator')) {
+        assistantBubble.innerHTML = `
+          <div style="color:var(--warning);font-size:13px;">
+            ⏳ Ожидаю вашего решения...
+          </div>`;
+      }
+      showConfirmGate(
+        event.call_id,
+        event.command,
+        event.description,
+        event.dangerous || false
+      );
+      break;
+
+    case 'tool_executing':
+      appendToolMessage(
+        '⏳',
+        `Выполняю: <span class="tool-command-text">${escapeHtml(event.command)}</span>`,
+        'executing'
+      );
+      assistantBubble.innerHTML = `
+        <div class="typing-indicator">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>`;
+      break;
+
+    case 'tool_result': {
+      const r = event.result;
+      if (r.success) {
+        // Обрезаем длинный вывод
+        const out = (r.stdout || r.details || 'OK').length > 600
+          ? (r.stdout || r.details).slice(0, 600) + '\n… (обрезано)'
+          : (r.stdout || r.details || 'OK');
+        appendToolMessage(
+          '✅',
+          `<code style="font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;">${escapeHtml(out)}</code>`,
+          'result-ok'
+        );
+      } else {
+        const errOut = (r.stderr || r.error || 'Неизвестная ошибка').slice(0, 300);
+        appendToolMessage(
+          '❌',
+          `Ошибка (код ${r.returncode ?? '?'}): <code style="font-size:12px;">${escapeHtml(errOut)}</code>`,
+          'result-err'
+        );
+      }
+      break;
+    }
+
+    case 'tool_rejected':
+      appendToolMessage('🚫', 'Действие отклонено пользователем.', 'rejected');
+      assistantBubble.innerHTML = `
+        <div class="typing-indicator">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>`;
+      break;
+
+    case 'tool_timeout':
+      appendToolMessage('⏰', 'Время ожидания подтверждения истекло.', 'rejected');
+      break;
+
+    case 'assistant_message':
+      setAssistantContent(assistantBubble, event.content);
+      setMessageModelBadge(msgModelBadge, selectedModel);
+      break;
+
+    case 'usage':
+      appendUsageBadge(event);
+      break;
+
+    case 'error':
+      assistantBubble.innerHTML = `
+        <div style="color:var(--danger);">
+          ❌ <strong>Ошибка:</strong> ${escapeHtml(event.message)}
+        </div>`;
+      showToast(`❌ ${event.message}`, 'error', 5000);
+      updateModelBadge(null, false);
+      break;
+
+    case 'done':
+      if (assistantBubble.querySelector('.typing-indicator')) {
+        assistantBubble.innerHTML =
+          '<span style="color:var(--text-muted);">— (пустой ответ)</span>';
+      }
+      // Сбрасываем бейдж роутинга (если ещё не был обновлён)
+      if (!state.currentModel) updateModelBadge(null, false);
+      break;
+
+    default:
+      console.warn('Неизвестный тип SSE-события:', event.type, event);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// ОЧИСТКА ИСТОРИИ
+// ════════════════════════════════════════════════════════════════
+
+async function clearHistory() {
+  if (!confirm('Очистить всю историю диалога? Данные будут удалены из базы данных.')) return;
+  try {
+    await fetch('/clear-history', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: state.sessionId }),
+    });
+
+    // Очищаем UI
+    while ($chatArea.firstChild) $chatArea.removeChild($chatArea.firstChild);
+    $chatArea.appendChild($emptyState);
+    $emptyState.style.display = '';
+
+    // v5.0: Сбрасываем session_id чтобы начать чистую сессию
+    localStorage.removeItem('neuralchat_session_id');
+    state.sessionId    = getOrCreateSessionId();
+    state.currentModel = null;
+    updateModelBadge(null, false);
+
+    showToast('🗑️ История очищена', 'info');
+  } catch (err) {
+    showToast(`❌ Ошибка очистки: ${err.message}`, 'error');
+  }
+}
+
+$clearBtn.addEventListener('click', clearHistory);
+
+
+// ════════════════════════════════════════════════════════════════
+// ПОЛЕ ВВОДА — авторесайз и горячие клавиши
+// ════════════════════════════════════════════════════════════════
+
+function autoResizeTextarea() {
+  $msgInput.style.height = 'auto';
+  $msgInput.style.height = Math.min($msgInput.scrollHeight, 150) + 'px';
+}
+
+$msgInput.addEventListener('input', autoResizeTextarea);
+
+$msgInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+$sendBtn.addEventListener('click', sendMessage);
+
+
+// ════════════════════════════════════════════════════════════════
+// v5.0: ГОЛОСОВОЙ ВВОД (Web Speech API)
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Инициализация Web Speech API.
+ *
+ * Поддерживается в Chromium-браузерах (Chrome, Edge, Brave).
+ * В Firefox не поддерживается — кнопка отключается.
+ *
+ * Алгоритм:
+ * 1. Нажатие кнопки 🎤 → начинаем запись (recognition.start)
+ * 2. Кнопка пульсирует красным пока идёт запись
+ * 3. При получении результата → вставляем текст в поле ввода
+ * 4. При паузе (onend) → запись автоматически останавливается
+ * 5. Повторное нажатие во время записи → принудительная остановка
+ */
+(function initVoiceInput() {
+  // Проверяем поддержку API
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    // Браузер не поддерживает Speech API — скрываем кнопку
+    $micBtn.disabled = true;
+    $micBtn.title    = 'Голосовой ввод не поддерживается в этом браузере';
+    $micBtn.style.opacity = '0.3';
+    console.warn('Web Speech API не поддерживается.');
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  // Настройки распознавания
+  recognition.lang           = 'ru-RU';   // Основной язык — русский
+  recognition.interimResults = true;      // Промежуточные результаты (в реальном времени)
+  recognition.maxAlternatives = 1;        // Одна альтернатива транскрипции
+  recognition.continuous     = false;     // Останавливаемся после паузы
+
+  let isRecording = false;
+  let finalTranscript = '';   // Накапливаем финальные результаты
+
+  // ── Начало записи ──
+  recognition.onstart = () => {
+    isRecording     = true;
+    finalTranscript = '';
+    $micBtn.classList.add('recording');
+    $micBtn.title = 'Запись идёт... Нажмите ещё раз для остановки';
+    showToast('🎤 Запись начата. Говорите...', 'info', 2000);
+  };
+
+  // ── Получение результатов (в реальном времени) ──
+  recognition.onresult = (event) => {
+    let interimTranscript = '';
+
+    // Обходим все результаты начиная с последнего обработанного
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript + ' ';
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+
+    // Показываем промежуточный результат в поле ввода как placeholder
+    // Финальный текст + промежуточный в скобках
+    const displayText = finalTranscript + interimTranscript;
+    $msgInput.value = displayText.trim();
+    autoResizeTextarea();
+  };
+
+  // ── Запись завершена (пауза или явная остановка) ──
+  recognition.onend = () => {
+    isRecording = false;
+    $micBtn.classList.remove('recording');
+    $micBtn.title = 'Голосовой ввод';
+
+    if (finalTranscript.trim()) {
+      $msgInput.value = finalTranscript.trim();
+      autoResizeTextarea();
+      $msgInput.focus();
+      showToast('✅ Текст распознан', 'success', 1500);
+    }
+  };
+
+  // ── Ошибки распознавания ──
+  recognition.onerror = (event) => {
+    isRecording = false;
+    $micBtn.classList.remove('recording');
+
+    const errorMessages = {
+      'no-speech':          '🔇 Речь не обнаружена. Попробуйте ещё раз.',
+      'audio-capture':      '🎙️ Микрофон недоступен.',
+      'not-allowed':        '🚫 Доступ к микрофону запрещён. Разрешите в настройках браузера.',
+      'network':            '🌐 Ошибка сети при распознавании.',
+      'aborted':            null,  // Намеренная остановка — не показываем ошибку
+    };
+
+    const msg = errorMessages[event.error];
+    if (msg) showToast(msg, 'error', 4000);
+    console.warn('Speech recognition error:', event.error);
+  };
+
+  // ── Кнопка микрофона: toggle запись ──
+  $micBtn.addEventListener('click', () => {
+    if (isRecording) {
+      // Останавливаем запись
+      recognition.stop();
+    } else {
+      // Начинаем запись
+      // Очищаем поле если там есть старый текст (опционально)
+      // $msgInput.value = '';
+      try {
+        recognition.start();
+      } catch (err) {
+        // recognition уже запущен — игнорируем
+        console.warn('Recognition start error:', err);
+      }
+    }
+  });
+
+  console.info('Web Speech API инициализирован (lang: ru-RU).');
+})();
+
+
+// ════════════════════════════════════════════════════════════════
+// ПОДСКАЗКИ (hint chips)
+// ════════════════════════════════════════════════════════════════
+
+function useHint(el) {
+  // Убираем эмодзи в начале строки
+  $msgInput.value = el.textContent.replace(/^[\p{Emoji}\s]+/u, '').trim();
+  autoResizeTextarea();
+  sendMessage();
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// ИНИЦИАЛИЗАЦИЯ
+// ════════════════════════════════════════════════════════════════
+
+window.addEventListener('load', async () => {
+  $msgInput.focus();
+
+  // v5.0: Загружаем историю из SQLite через бэкенд
+  await loadChatHistory();
+
+  // Подсказка при первом запуске (нет API-ключа)
+  if (!state.apiKey) {
+    setTimeout(() => {
+      showToast('👋 Добро пожаловать в NeuralChat v5.0! Введите API-ключ в ⚙️ Настройках', 'info', 6000);
+    }, 800);
+  }
+});
+</script>
+</body>
+</html>
