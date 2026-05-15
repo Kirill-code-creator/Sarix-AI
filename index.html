@@ -1102,13 +1102,13 @@ marked.setOptions({
 /** Умный парсер: спасает формулы LaTeX от поломки внутри Marked.js */
 function renderSafeMarkdown(text) {
   const mathBlocks = [];
-  
+
   // 1. Вырезаем и прячем дисплейные формулы ($$...$$ и \[...\])
   let safeText = text.replace(/(\$\$|\\\[)([\s\S]*?)(\$\$|\\\])/g, (match) => {
     mathBlocks.push(match);
     return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
   });
-  
+
   // 2. Вырезаем и прячем инлайн формулы ($...$ и \(...\))
   safeText = safeText.replace(/(\$|\\\()([\s\S]*?)(\$|\\\))/g, (match) => {
     mathBlocks.push(match);
@@ -1145,10 +1145,10 @@ function appendUserMessage(text) {
 function setAssistantContent(bubble, markdownText) {
   // Используем наш безопасный парсер
   bubble.innerHTML = renderSafeMarkdown(markdownText);
-  
+
   // Подсвечиваем синтаксис кода
   bubble.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
-  
+
   // Запускаем MathJax
   if (window.MathJax) {
     MathJax.typesetPromise([bubble]).catch(err => console.warn('MathJax render error:', err));
@@ -1448,10 +1448,10 @@ async function handleSSEEvent(event, assistantBubble, msgModelBadge, selectedMod
       );
       break;
 
-    case 'tool_executing':
-      appendToolMessage(
+    case 'tool_executing': {
+      const msgEl = appendToolMessage(
         '⏳',
-        `Выполняю: <span class="tool-command-text">${escapeHtml(event.command)}</span>`,
+        `Выполняю: <span class="tool-command-text">${escapeHtml(event.command)}</span><div class="tool-output-stream" id="tool-output-${event.call_id}" style="margin-top: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; display: none; max-height: 150px; overflow-y: auto; white-space: pre-wrap;"></div>`,
         'executing'
       );
       assistantBubble.innerHTML = `
@@ -1461,6 +1461,17 @@ async function handleSSEEvent(event, assistantBubble, msgModelBadge, selectedMod
           <span class="typing-dot"></span>
         </div>`;
       break;
+    }
+
+    case 'tool_output': {
+      const outBox = document.getElementById(`tool-output-${event.call_id}`);
+      if (outBox) {
+        outBox.style.display = 'block';
+        outBox.textContent += event.output;
+        outBox.scrollTop = outBox.scrollHeight;
+      }
+      break;
+    }
 
     case 'tool_result': {
       const r = event.result;
