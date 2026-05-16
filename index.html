@@ -66,6 +66,132 @@
       color: var(--text-primary);
     }
 
+
+    /* ══════════════════════════════════════════════
+       THEMES (v5.0)
+    ══════════════════════════════════════════════ */
+
+    body.theme-claude {
+      --bg-deep: #1a0505;
+      --accent-cyan: #ff4444;
+      --accent-purple: #ff8888;
+      --glass-bg: rgba(26, 5, 5, 0.72);
+      --glass-border: rgba(255, 68, 68, 0.18);
+      --ai-bubble: rgba(255, 68, 68, 0.08);
+    }
+    body.theme-deepseek {
+      --bg-deep: #0a101f;
+      --accent-cyan: #00f5ff;
+      --accent-purple: #00ffcc;
+      --glass-bg: rgba(10, 16, 31, 0.72);
+      --glass-border: rgba(0, 245, 255, 0.18);
+      --ai-bubble: rgba(0, 245, 255, 0.08);
+    }
+    body.theme-grok {
+      --bg-deep: #000000;
+      --accent-cyan: #888888;
+      --accent-purple: #aaaaaa;
+      --glass-bg: rgba(0, 0, 0, 0.72);
+      --glass-border: rgba(136, 136, 136, 0.18);
+      --ai-bubble: rgba(136, 136, 136, 0.08);
+      background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    body.theme-chatgpt {
+      --bg-deep: #ffffff;
+      --text-primary: #111111;
+      --text-secondary: #333333;
+      --text-muted: #666666;
+      --accent-cyan: #10a37f;
+      --accent-purple: #10a37f;
+      --glass-bg: rgba(255, 255, 255, 0.85);
+      --glass-border: rgba(16, 163, 127, 0.2);
+      --user-bubble: rgba(16, 163, 127, 0.1);
+      --ai-bubble: rgba(0, 0, 0, 0.04);
+    }
+    body.theme-gemini {
+      --bg-deep: #0f0a1f;
+      --accent-cyan: #4285f4;
+      --accent-purple: #ea4335;
+      --accent-pink: #fbbc05;
+      --accent-green: #34a853;
+      --glass-bg: rgba(15, 10, 31, 0.72);
+      --glass-border: rgba(66, 133, 244, 0.18);
+      --ai-bubble: rgba(66, 133, 244, 0.08);
+      background: linear-gradient(135deg, #0a1930, #1b0a24, #0a1930);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+    }
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* ══════════════════════════════════════════════
+       CUSTOM SCROLLBAR
+    ══════════════════════════════════════════════ */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--accent-cyan);
+      border-radius: 10px;
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-purple);
+      box-shadow: 0 0 10px var(--accent-purple);
+    }
+
+    /* ══════════════════════════════════════════════
+       THINKING BLOCK (Glassmorphism Spoiler)
+    ══════════════════════════════════════════════ */
+    .think-block {
+      margin-bottom: 12px;
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: var(--blur-glass);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .think-header {
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .think-content {
+      padding: 12px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      display: none;
+    }
+    .think-block.open .think-content {
+      display: block;
+    }
+
+    /* Message sliding animation */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-wrapper {
+      animation: slideUp 0.3s ease forwards;
+    }
+
     /* ══ 3D CANVAS ══ */
     #three-canvas {
       position: fixed;
@@ -842,6 +968,46 @@
     <input type="range" id="top-k-input" min="0" max="100" step="1" value="0" style="width:100%;">
   </div>
 
+
+  <hr class="settings-divider">
+
+  <div class="settings-group">
+    <label class="settings-label">🧠 Swarm Mode</label>
+    <select id="swarm-mode-select" class="settings-input" style="background:#0a101f;">
+      <option value="base">Base (Быстрый, дешевый)</option>
+      <option value="pro">Pro (Баланс, 3-й уровень)</option>
+      <option value="premium">Premium (Chain of Thought)</option>
+    </select>
+  </div>
+
+  <hr class="settings-divider">
+
+  <div class="settings-group">
+    <label class="settings-label">🎨 Генерация изображений</label>
+    <label class="settings-hint" style="margin-top:8px;">Движок:</label>
+    <select id="generation-mode-select" class="settings-input" style="background:#0a101f;">
+      <option value="local">Local GPU (ComfyUI)</option>
+      <option value="cloud">Cloud (Pollinations.ai)</option>
+    </select>
+
+    <label class="settings-hint" style="margin-top:8px;">Соотношение сторон:</label>
+    <select id="aspect-ratio-select" class="settings-input" style="background:#0a101f;">
+      <option value="1:1">1:1 (Квадрат)</option>
+      <option value="16:9">16:9 (Пейзаж)</option>
+      <option value="9:16">9:16 (Портрет)</option>
+      <option value="4:3">4:3 (Фото)</option>
+    </select>
+
+    <label class="settings-hint" style="margin-top:8px;">Шаги сэмплинга (Local): <span id="steps-val">20</span></label>
+    <input type="range" id="steps-input" min="10" max="50" step="1" value="20" style="width:100%;">
+
+    <label class="settings-hint" style="margin-top:8px;">CFG Scale (Local): <span id="cfg-val">7.0</span></label>
+    <input type="range" id="cfg-input" min="1.0" max="15.0" step="0.5" value="7.0" style="width:100%;">
+
+    <label class="settings-hint" style="margin-top:8px;">Negative Prompt (Local):</label>
+    <textarea id="negative-prompt-input" class="settings-textarea" placeholder="Уродливо, плохое качество..."></textarea>
+  </div>
+
   <button class="settings-save-btn" id="settings-save-btn">💾 Сохранить настройки</button>
 </div>
 
@@ -935,13 +1101,14 @@
   const clock       = new THREE.Clock();
   const colorCyan   = new THREE.Color(0x00f5ff);
   const colorPurple = new THREE.Color(0xa855f7);
+  window.threeSpeedMultiplier = 1.0;
 
   function animate() {
     requestAnimationFrame(animate);
     const pos = particlesGeo.attributes.position.array;
 
-    particles.rotation.y = clock.getElapsedTime() * 0.04 + mouse.nx * 0.2;
-    particles.rotation.x = mouse.ny * 0.15;
+    particles.rotation.y = clock.getElapsedTime() * 0.04 * window.threeSpeedMultiplier + mouse.nx * 0.2;
+    particles.rotation.x = mouse.ny * 0.15 * window.threeSpeedMultiplier;
     lines.rotation.y     = particles.rotation.y;
     lines.rotation.x     = particles.rotation.x;
 
@@ -1320,6 +1487,16 @@ marked.setOptions({
 /** Умный парсер: спасает формулы LaTeX от поломки внутри Marked.js */
 /** Умный парсер: спасает формулы LaTeX от поломки внутри Marked.js */
 function renderSafeMarkdown(text) {
+  // Parsing <think>
+  text = text.replace(/<think>([\s\S]*?)<\/think>/gi, (match, p1) => {
+    return `<div class="think-block">
+              <div class="think-header" onclick="this.parentElement.classList.toggle('open')">
+                <span>💭 Цепочка рассуждений</span><span style="font-size:10px;">(развернуть)</span>
+              </div>
+              <div class="think-content">${p1}</div>
+            </div>`;
+  });
+
   const mathBlocks = [];
 
   // 1. Вырезаем и прячем дисплейные формулы ($$...$$ и \[...\])
@@ -1547,6 +1724,7 @@ async function sendMessage() {
 
   state.isGenerating = true;
   $sendBtn.disabled  = true;
+  window.threeSpeedMultiplier = 4.0; // Fast spin while thinking
   $msgInput.value    = '';
   autoResizeTextarea();
 
@@ -1633,6 +1811,7 @@ async function sendMessage() {
   } finally {
     state.isGenerating = false;
     $sendBtn.disabled  = false;
+    window.threeSpeedMultiplier = 1.0; // Normal spin
     $msgInput.focus();
   }
 }
@@ -1646,6 +1825,18 @@ async function handleSSEEvent(event, assistantBubble, msgModelBadge, selectedMod
 
     case 'thinking':
       // Индикатор набора уже отображается по умолчанию
+      break;
+
+    case 'generation_progress':
+      const pct = Math.round((event.step / event.max_steps) * 100);
+      assistantBubble.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:12px;color:var(--text-secondary);">Сэмплинг: ${event.step} / ${event.max_steps} (${pct}%)</div>
+            <div style="width:100%;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:var(--accent-cyan);transition:width 0.2s;"></div>
+            </div>
+        </div>
+      `;
       break;
 
     // v5.0: Безопасная команда выполняется автоматически
@@ -1820,11 +2011,20 @@ function autoResizeTextarea() {
 $msgInput.addEventListener('input', autoResizeTextarea);
 
 $msgInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Enter' && e.ctrlKey)) {
     e.preventDefault();
     sendMessage();
   }
 });
+
+// Settings UI updates for sliders
+document.getElementById('steps-input').addEventListener('input', (e) => {
+    document.getElementById('steps-val').innerText = e.target.value;
+});
+document.getElementById('cfg-input').addEventListener('input', (e) => {
+    document.getElementById('cfg-val').innerText = parseFloat(e.target.value).toFixed(1);
+});
+
 
   // ════════════════════════════════════════════════════════════════
   // ОБРАБОТКА ФАЙЛОВ (DRAG & DROP, КНОПКА)

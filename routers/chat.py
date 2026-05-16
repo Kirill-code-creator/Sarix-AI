@@ -68,7 +68,7 @@ async def chat(req: ChatRequest):
             message_content = [{"type": "text", "text": message_content}] + image_contents
 
     await _append_to_history(req.session_id, {"role": "user", "content": message_content})
-    selected_model = await _route_model(req.message, req.api_key)
+    selected_model = await _route_model(req.message, req.api_key, req.swarm_mode)
 
     async def stream_with_model_event():
         yield "data: " + json.dumps({
@@ -85,6 +85,11 @@ async def chat(req: ChatRequest):
             temperature=req.temperature,
             top_p=req.top_p,
             top_k=req.top_k,
+            generation_mode=req.generation_mode,
+            aspect_ratio=req.aspect_ratio,
+            steps=req.steps,
+            negative_prompt=req.negative_prompt,
+            cfg_scale=req.cfg_scale,
         ):
             yield event
 

@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-
 from typing import Optional, List, Dict, Any
 
 class ChatRequest(BaseModel):
@@ -19,6 +18,16 @@ class ChatRequest(BaseModel):
     top_p:         Optional[float] = 1.0
     top_k:         Optional[int]   = 0
     files:         Optional[List[Dict[str, Any]]] = None
+
+    # Swarm Mode parameter
+    swarm_mode:    Optional[str] = "base" # base, pro, premium
+
+    # Extended Image Generation Parameters
+    generation_mode: Optional[str] = "cloud" # local or cloud
+    aspect_ratio: Optional[str] = "1:1" # 1:1, 16:9, 9:16, 4:3
+    steps: Optional[int] = 20 # 10 to 50
+    negative_prompt: Optional[str] = ""
+    cfg_scale: Optional[float] = 7.0
 
 class ToolDecisionRequest(BaseModel):
     call_id:  str

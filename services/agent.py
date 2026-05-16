@@ -7,7 +7,7 @@ import httpx
 from logger import logger
 from config import (
     OPENROUTER_BASE_URL, CONTEXT_WINDOW_SIZE, SERVER_HOST, SERVER_PORT,
-    ORCHESTRATOR_MODEL, ROUTING_MAP, ROUTING_FALLBACK, ORCHESTRATOR_SYSTEM
+    ORCHESTRATOR_MODEL, ROUTING_MAP, ROUTING_FALLBACK, ORCHESTRATOR_SYSTEM, SWARM_MODES
 )
 from services.state import _get_session_history, _append_to_history, pending_tool_calls, tool_call_events, tool_call_decisions
 from services.computer import _run_computer_control
@@ -128,13 +128,13 @@ async def _call_openrouter(
         r.raise_for_status()
         return r.json()
 
-async def _route_model(message: str, api_key: str) -> str:
+async def _route_model(message: str, api_key: str, swarm_mode: str = "base") -> str:
     try:
         orchestrator_messages = [
             {"role": "system", "content": ORCHESTRATOR_SYSTEM},
             {"role": "user",   "content": message[:500]},
         ]
-        logger.info(f"[Оркестратор] Анализирую запрос: {message[:80]!r}...")
+        logger.info(f"[Оркестратор] Анализирую запрос (swarm_mode: {swarm_mode}): {message[:80]!r}...")
         resp = await _call_openrouter(
             messages=orchestrator_messages,
             api_key=api_key,
@@ -146,7 +146,36 @@ async def _route_model(message: str, api_key: str) -> str:
         raw_clean = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
         parsed = json.loads(raw_clean)
         category = parsed.get("category", "chat").lower()
-        selected_model = ROUTING_MAP.get(category, ROUTING_FALLBACK)
+
+        mode_config = SWARM_MODES.get(swarm_mode, SWARM_MODES["base"])
+
+        if swarm_mode == "base":
+            if category == "coding" or category == "math":
+                selected_model = mode_config["coding"]
+            elif category == "vision":
+                selected_model = ROUTING_MAP["vision"]
+            else:
+                selected_model = mode_config["architect"]
+        elif swarm_mode == "pro":
+            if category == "coding" or category == "math":
+                selected_model = mode_config["coding"]
+            elif category == "vision":
+                selected_model = mode_config["general"]
+            else:
+                selected_model = mode_config["design"]
+        elif swarm_mode == "premium":
+            if category == "coding" or category == "math":
+                selected_model = mode_config["thinking_3"]
+            elif category == "vision":
+                selected_model = mode_config["thinking_1"]
+            else:
+                selected_model = mode_config["thinking_2"]
+        else:
+             selected_model = ROUTING_MAP.get(category, ROUTING_FALLBACK)
+
+        if category == "image_generation":
+             selected_model = "image_generation"
+
         logger.info(f"[Оркестратор] Категория: {category!r} → Модель: {selected_model}")
         return selected_model
     except Exception as exc:
@@ -154,6 +183,12 @@ async def _route_model(message: str, api_key: str) -> str:
         return ROUTING_FALLBACK
 
 import urllib.parse
+import websockets
+import uuid
+from io import BytesIO
+from PIL import Image
+import base64
+from config import COMFYUI_API_URL, COMFYUI_WS_URL, POLLINATIONS_API_URL
 
 async def _agent_loop(
     session_id:    str,
@@ -164,6 +199,11 @@ async def _agent_loop(
     temperature:   float | None = None,
     top_p:         float | None = None,
     top_k:         int | None = None,
+    generation_mode: str = "cloud",
+    aspect_ratio: str = "1:1",
+    steps: int = 20,
+    negative_prompt: str = "",
+    cfg_scale: float = 7.0,
 ):
     def sse(t: str, payload: dict) -> str:
         return "data: " + json.dumps({"type": t, **payload}, ensure_ascii=False) + "\n\n"
@@ -199,15 +239,137 @@ async def _agent_loop(
 
     if model == "image_generation":
         yield sse("thinking", {"message": "Генерирую изображение..."})
-        safe_prompt = urllib.parse.quote(last_user_msg)
-        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}"
-        content = f"Вот ваше изображение:\n\n![Сгенерированное изображение]({image_url})"
 
-        msg = {"role": "assistant", "content": content}
-        await _append_to_history(session_id, msg)
-        yield sse("assistant_message", {"content": content})
-        yield sse("done", {})
-        return
+        async def fallback_cloud():
+            logger.info(f"[{session_id}] Используем Cloud Engine (Pollinations.ai)")
+            safe_prompt = urllib.parse.quote(last_user_msg)
+            # Add parameters to Pollinations API
+            ratio_map = {"1:1": "1:1", "16:9": "16:9", "9:16": "9:16", "4:3": "4:3"}
+            ar = ratio_map.get(aspect_ratio, "1:1")
+            image_url = f"{POLLINATIONS_API_URL}{safe_prompt}?nologo=true&seed={uuid.uuid4().int % 100000}"
+            content = f"Вот ваше изображение (Cloud):\n\n![Сгенерированное изображение]({image_url})"
+            msg = {"role": "assistant", "content": content}
+            await _append_to_history(session_id, msg)
+            yield sse("assistant_message", {"content": content})
+            yield sse("done", {})
+
+        if generation_mode == "local":
+            try:
+                # ComfyUI Payload
+                client_id = str(uuid.uuid4())
+                prompt_workflow = {
+                    "3": {
+                        "class_type": "KSampler",
+                        "inputs": {
+                            "seed": uuid.uuid4().int % 100000,
+                            "steps": steps,
+                            "cfg": cfg_scale,
+                            "sampler_name": "euler",
+                            "scheduler": "normal",
+                            "denoise": 1,
+                            "model": ["4", 0],
+                            "positive": ["6", 0],
+                            "negative": ["7", 0],
+                            "latent_image": ["5", 0]
+                        }
+                    },
+                    "4": {
+                        "class_type": "CheckpointLoaderSimple",
+                        "inputs": {"ckpt_name": "v1-5-pruned-emaonly.safetensors"} # Default
+                    },
+                    "5": {
+                        "class_type": "EmptyLatentImage",
+                        "inputs": {
+                            "batch_size": 1,
+                            "width": 512 if aspect_ratio in ["1:1", "4:3"] else (768 if aspect_ratio == "16:9" else 512),
+                            "height": 512 if aspect_ratio in ["1:1", "16:9"] else (768 if aspect_ratio == "9:16" else 512)
+                        }
+                    },
+                    "6": {
+                        "class_type": "CLIPTextEncode",
+                        "inputs": {"text": last_user_msg, "clip": ["4", 1]}
+                    },
+                    "7": {
+                        "class_type": "CLIPTextEncode",
+                        "inputs": {"text": negative_prompt, "clip": ["4", 1]}
+                    },
+                    "8": {
+                        "class_type": "VAEDecode",
+                        "inputs": {"samples": ["3", 0], "vae": ["4", 2]}
+                    },
+                    "9": {
+                        "class_type": "SaveImage",
+                        "inputs": {"filename_prefix": "Sarix", "images": ["8", 0]}
+                    }
+                }
+
+                # Check ComfyUI API availability
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    await client.get(f"{COMFYUI_API_URL}/system_stats")
+
+                yield sse("thinking", {"message": "Подключаюсь к локальному GPU (ComfyUI)..."})
+
+                # Request generation
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    data = {"prompt": prompt_workflow, "client_id": client_id}
+                    req = await client.post(f"{COMFYUI_API_URL}/prompt", json=data)
+                    req.raise_for_status()
+                    prompt_id = req.json()["prompt_id"]
+
+                # Connect to WebSocket for progress
+                async with websockets.connect(f"{COMFYUI_WS_URL}?clientId={client_id}") as ws:
+                    yield sse("thinking", {"message": "Генерация началась..."})
+                    image_filename = None
+                    while True:
+                        msg = await ws.recv()
+                        if isinstance(msg, str):
+                            data = json.loads(msg)
+                            if data['type'] == 'progress':
+                                value = data['data']['value']
+                                max_val = data['data']['max']
+                                yield sse("generation_progress", {"step": value, "max_steps": max_val})
+                            elif data['type'] == 'executed' and 'node' in data['data']:
+                                # Generation finished, output produced
+                                if 'output' in data['data'] and 'images' in data['data']['output']:
+                                    image_filename = data['data']['output']['images'][0]['filename']
+                                    break
+                            elif data['type'] == 'execution_error':
+                                raise Exception(f"ComfyUI Error: {data['data']}")
+
+                # Fetch and compress image
+                if image_filename:
+                    yield sse("thinking", {"message": "Сжатие и сохранение..."})
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        img_req = await client.get(f"{COMFYUI_API_URL}/view?filename={image_filename}&type=output")
+                        img_req.raise_for_status()
+                        img_bytes = img_req.content
+
+                        # Compress with Pillow
+                        img = Image.open(BytesIO(img_bytes))
+                        out_buffer = BytesIO()
+                        img.convert("RGB").save(out_buffer, format="JPEG", quality=80)
+                        compressed_b64 = base64.b64encode(out_buffer.getvalue()).decode("utf-8")
+
+                        data_url = f"data:image/jpeg;base64,{compressed_b64}"
+                        content = f"Вот ваше изображение (Local GPU):\n\n![Сгенерированное изображение]({data_url})"
+
+                        msg = {"role": "assistant", "content": content}
+                        await _append_to_history(session_id, msg)
+                        yield sse("assistant_message", {"content": content})
+                        yield sse("done", {})
+                        return
+                else:
+                    raise Exception("No image filename received from ComfyUI.")
+
+            except Exception as e:
+                logger.error(f"Local Generation Failed: {e}. Falling back to Cloud Engine.")
+                async for chunk in fallback_cloud():
+                    yield chunk
+                return
+        else:
+            async for chunk in fallback_cloud():
+                yield chunk
+            return
 
     for iteration in range(10):
         history = await _get_session_history(session_id)
