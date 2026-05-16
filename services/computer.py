@@ -7,7 +7,7 @@ try:
     import pyautogui
     pyautogui.FAILSAFE = False
     _PYAUTOGUI_AVAILABLE = True
-except ImportError:
+except Exception:
     _PYAUTOGUI_AVAILABLE = False
 
 async def _run_computer_control(action: str, **kwargs) -> dict:
