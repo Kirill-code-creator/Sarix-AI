@@ -31,6 +31,13 @@ async def _db_init() -> None:
             CREATE INDEX IF NOT EXISTS idx_messages_session
             ON messages (session_id, id)
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fact TEXT NOT NULL,
+                created_at REAL DEFAULT (unixepoch('now', 'subsec'))
+            )
+        """)
         await conn.commit()
     logger.info("БД инициализирована.")
 
@@ -111,3 +118,14 @@ async def _db_get_all_sessions() -> list[dict]:
         {"session_id": sid, "msg_count": cnt, "last_activity": last}
         for sid, cnt, last in rows
     ]
+
+async def _db_save_memory(fact: str) -> None:
+    async with aiosqlite.connect(_get_db_path()) as conn:
+        await conn.execute("INSERT INTO user_memory (fact) VALUES (?)", (fact,))
+        await conn.commit()
+
+async def _db_load_memory() -> list[str]:
+    async with aiosqlite.connect(_get_db_path()) as conn:
+        async with conn.execute("SELECT fact FROM user_memory ORDER BY id ASC") as cursor:
+            rows = await cursor.fetchall()
+    return [row[0] for row in rows]

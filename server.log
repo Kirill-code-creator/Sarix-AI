@@ -1,0 +1,23 @@
+2026-05-16 07:25:28,288 [INFO] neuralchat — ============================================================
+2026-05-16 07:25:28,288 [INFO] neuralchat —   NeuralChat Desktop v5.0 запускается
+2026-05-16 07:25:28,288 [INFO] neuralchat —   http://127.0.0.1:19234
+2026-05-16 07:25:28,288 [INFO] neuralchat —   pyautogui: ✗ (отключено)
+2026-05-16 07:25:28,289 [INFO] neuralchat —   База данных: /app/chats.db
+2026-05-16 07:25:28,289 [INFO] neuralchat — ============================================================
+2026-05-16 07:25:28,317 [INFO] uvicorn.error — Started server process [786195]
+2026-05-16 07:25:28,317 [INFO] uvicorn.error — Waiting for application startup.
+2026-05-16 07:25:28,317 [INFO] neuralchat — База данных: /app/chats.db
+2026-05-16 07:25:28,320 [INFO] neuralchat — БД инициализирована.
+2026-05-16 07:25:28,321 [INFO] uvicorn.error — Application startup complete.
+2026-05-16 07:25:28,321 [INFO] uvicorn.error — Uvicorn running on http://127.0.0.1:19234 (Press CTRL+C to quit)
+2026-05-16 07:25:28,400 [INFO] neuralchat — ✓ Сервер готов.
+2026-05-16 07:25:28,404 [INFO] neuralchat — ✓ Приложение запущено. PID браузера: 787411
+2026-05-16 07:25:28,681 [INFO] neuralchat — Браузер закрыт → завершаем приложение.
+2026-05-16 07:26:09,809 [INFO] uvicorn.access — 127.0.0.1:36488 - "GET /health HTTP/1.1" 200
+2026-05-16 07:35:04,885 [INFO] uvicorn.access — 127.0.0.1:49130 - "GET / HTTP/1.1" 200
+2026-05-16 07:35:07,668 [INFO] uvicorn.access — 127.0.0.1:49130 - "GET /history/sess_mp817202_ml70tq HTTP/1.1" 200
+2026-05-16 07:36:54,450 [INFO] uvicorn.access — 127.0.0.1:60038 - "GET / HTTP/1.1" 200
+2026-05-16 07:36:55,304 [INFO] uvicorn.access — 127.0.0.1:60038 - "GET /history/sess_mp819dlz_17pr80 HTTP/1.1" 200
+2026-05-16 07:38:09,769 [INFO] uvicorn.access — 127.0.0.1:48920 - "GET / HTTP/1.1" 200
+2026-05-16 07:38:10,622 [INFO] uvicorn.access — 127.0.0.1:48920 - "GET /history/sess_mp81azq6_zefnux HTTP/1.1" 200
+2026-05-16 07:38:12,821 [INFO] uvicorn.access — 127.0.0.1:48920 - "GET /sessions HTTP/1.1" 200
