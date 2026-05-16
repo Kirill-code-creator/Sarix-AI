@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://api.openrouter.ai; img-src 'self' data: blob: https://image.pollinations.ai; media-src 'self' data: blob:;" />
   <title>NeuralChat — AI Assistant v5.0</title>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
   <link rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -399,6 +401,63 @@
     }
     #send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+    /* ══ БОКОВАЯ ПАНЕЛЬ ИСТОРИИ ══ */
+    #sidebar-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    #sidebar-overlay.open { opacity: 1; pointer-events: all; }
+
+    #sidebar {
+      position: fixed; top: 0; left: 0;
+      height: 100vh; width: 300px; max-width: 85vw;
+      background: rgba(4, 8, 20, 0.95);
+      backdrop-filter: blur(30px) saturate(200%);
+      border-right: 1px solid var(--glass-border);
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 15px;
+      transform: translateX(-100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 101; overflow-y: auto;
+    }
+    #sidebar.open { transform: translateX(0); }
+
+    .sidebar-header {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 18px; font-weight: 700;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-btn-new {
+      width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
+      background: linear-gradient(135deg, rgba(0,245,255,0.15), rgba(168,85,247,0.15));
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md); color: var(--accent-cyan);
+      cursor: pointer; transition: all 0.3s ease;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .sidebar-btn-new:hover {
+      background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(168,85,247,0.25));
+      border-color: rgba(0,245,255,0.4);
+      box-shadow: 0 0 15px rgba(0,245,255,0.2);
+    }
+
+    .session-item {
+      padding: 12px; border-radius: var(--radius-md);
+      background: rgba(255,255,255,0.03); border: 1px solid transparent;
+      cursor: pointer; transition: all 0.2s; color: var(--text-primary);
+      font-size: 13.5px;
+    }
+    .session-item:hover {
+      background: rgba(255,255,255,0.06); border-color: var(--glass-hover);
+    }
+    .session-item.active {
+      background: rgba(0,245,255,0.1); border-color: rgba(0,245,255,0.3);
+      color: var(--accent-cyan);
+    }
+
     /* ══ ПАНЕЛЬ НАСТРОЕК ══ */
     #settings-overlay {
       position: fixed; inset: 0; z-index: 100;
@@ -598,6 +657,7 @@
   <!-- Шапка -->
   <header id="header">
     <div class="header-left">
+      <button class="btn btn-icon" id="sidebar-toggle-btn" title="История чатов">☰</button>
       <div class="logo-orb"></div>
       <div>
         <div class="header-title">NeuralChat</div>
@@ -613,6 +673,19 @@
       <button class="btn btn-primary" id="settings-btn">⚙️ Настройки</button>
     </div>
   </header>
+
+  <!-- Боковая панель (Sidebar) -->
+  <div id="sidebar-overlay"></div>
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <span>📚 История чатов</span>
+      <button class="btn btn-icon" id="sidebar-close-btn">✕</button>
+    </div>
+    <button class="sidebar-btn-new" id="new-chat-btn">➕ Новый чат</button>
+    <div id="sessions-list" style="display: flex; flex-direction: column; gap: 8px;">
+      <!-- Список сессий будет здесь -->
+    </div>
+  </div>
 
   <!-- Область чата -->
   <div id="chat-area">
@@ -633,14 +706,25 @@
 
   <!-- Поле ввода -->
   <div id="input-area">
-    <textarea
-      id="message-input"
-      placeholder="Сообщение... (Enter — отправить, Shift+Enter — новая строка)"
-      rows="1"
-    ></textarea>
+    <button id="attach-btn" title="Прикрепить файл">📎</button>
+    <input type="file" id="file-input" multiple style="display:none;" />
+
+    <div style="display:flex; flex-direction:column; width:100%; position:relative;">
+      <div id="attachments-preview" style="display:flex; gap:8px; padding-bottom:4px; overflow-x:auto;"></div>
+      <textarea
+        id="message-input"
+        placeholder="Сообщение... (Enter — отправить, Shift+Enter — новая строка)"
+        rows="1"
+      ></textarea>
+    </div>
+
     <!-- v5.0: Кнопка микрофона (Web Speech API) -->
     <button id="mic-btn" title="Голосовой ввод (Web Speech API)">🎤</button>
     <button id="send-btn" title="Отправить (Enter)">➤</button>
+  </div>
+
+  <div id="drop-overlay" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,245,255,0.2); border:4px dashed var(--accent-cyan); justify-content:center; align-items:center; color:var(--accent-cyan); font-size:32px; font-weight:bold; pointer-events:none; backdrop-filter:blur(4px);">
+    Отпустите файлы здесь
   </div>
 
 </div>
@@ -739,6 +823,23 @@
       <br><br>
       ⚠️ Требуется Chromium-браузер (Edge / Chrome). В Firefox не поддерживается.
     </p>
+  </div>
+
+  <hr class="settings-divider"/>
+
+  <div class="settings-group">
+    <label class="settings-label">🎛️ Параметры генерации</label>
+    <label class="settings-hint" style="margin-top:4px;">Max Tokens: <span id="max-tokens-val">4096</span></label>
+    <input type="range" id="max-tokens-input" min="256" max="32768" step="256" value="4096" style="width:100%;">
+
+    <label class="settings-hint" style="margin-top:8px;">Temperature: <span id="temperature-val">0.7</span></label>
+    <input type="range" id="temperature-input" min="0.0" max="2.0" step="0.1" value="0.7" style="width:100%;">
+
+    <label class="settings-hint" style="margin-top:8px;">Top P: <span id="top-p-val">1.0</span></label>
+    <input type="range" id="top-p-input" min="0.1" max="1.0" step="0.05" value="1.0" style="width:100%;">
+
+    <label class="settings-hint" style="margin-top:8px;">Top K: <span id="top-k-val">0</span></label>
+    <input type="range" id="top-k-input" min="0" max="100" step="1" value="0" style="width:100%;">
   </div>
 
   <button class="settings-save-btn" id="settings-save-btn">💾 Сохранить настройки</button>
@@ -931,6 +1032,12 @@ const $settingsClose   = document.getElementById('settings-close-btn');
 const $settingsSave    = document.getElementById('settings-save-btn');
 const $settingsOverlay = document.getElementById('settings-overlay');
 const $settingsPanel   = document.getElementById('settings-panel');
+const $sidebarOverlay  = document.getElementById('sidebar-overlay');
+const $sidebar         = document.getElementById('sidebar');
+const $sidebarToggle   = document.getElementById('sidebar-toggle-btn');
+const $sidebarClose    = document.getElementById('sidebar-close-btn');
+const $newChatBtn      = document.getElementById('new-chat-btn');
+const $sessionsList    = document.getElementById('sessions-list');
 const $confirmOverlay  = document.getElementById('confirm-overlay');
 const $confirmBadge    = document.getElementById('confirm-badge');
 const $confirmTitle    = document.getElementById('confirm-title');
@@ -944,24 +1051,97 @@ const $modelBadge      = document.getElementById('model-badge');
 
 
 // ════════════════════════════════════════════════════════════════
-// НАСТРОЙКИ
+// ШИФРОВАНИЕ И НАСТРОЙКИ
 // ════════════════════════════════════════════════════════════════
-function loadSettings() {
+// Генерация ключа из отпечатка браузера для шифрования API-ключа
+async function getDeviceKey() {
+  const fp = navigator.userAgent + screen.width + "sarix-salt";
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", enc.encode(fp), { name: "PBKDF2" }, false, ["deriveBits", "deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: enc.encode("sarix"), iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    true, ["encrypt", "decrypt"]
+  );
+}
+
+async function encryptData(text) {
+  if (!text) return "";
+  const key = await getDeviceKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(text));
+  const combined = new Uint8Array(iv.length + cipher.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(cipher), iv.length);
+  return btoa(String.fromCharCode.apply(null, combined));
+}
+
+async function decryptData(b64) {
+  if (!b64) return "";
+  try {
+    const key = await getDeviceKey();
+    const raw = atob(b64);
+    const combined = new Uint8Array(raw.length);
+    for(let i = 0; i < raw.length; i++) combined[i] = raw.charCodeAt(i);
+    const iv = combined.slice(0, 12);
+    const data = combined.slice(12);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+    return new TextDecoder().decode(plain);
+  } catch (e) {
+    console.error("Ошибка расшифровки", e);
+    return "";
+  }
+}
+
+async function loadSettings() {
   const saved = JSON.parse(localStorage.getItem('neuralchat_settings') || '{}');
-  state.apiKey       = saved.apiKey       || '';
+  state.apiKey       = saved.apiKeyEncrypted ? await decryptData(saved.apiKeyEncrypted) : (saved.apiKey || '');
   state.systemPrompt = saved.systemPrompt ||
     'Ты — мощный AI-ассистент NeuralChat. Ты можешь выполнять команды в терминале и управлять компьютером (мышь, клавиатура). Всегда отвечай на языке пользователя. Будь лаконичен и точен.';
+  state.maxTokens    = saved.maxTokens !== undefined ? saved.maxTokens : 4096;
+  state.temperature  = saved.temperature !== undefined ? saved.temperature : 0.7;
+  state.topP         = saved.topP !== undefined ? saved.topP : 1.0;
+  state.topK         = saved.topK !== undefined ? saved.topK : 0;
 
   document.getElementById('api-key-input').value      = state.apiKey;
   document.getElementById('system-prompt-input').value = state.systemPrompt;
+  document.getElementById('max-tokens-input').value = state.maxTokens;
+  document.getElementById('temperature-input').value = state.temperature;
+  document.getElementById('top-p-input').value = state.topP;
+  document.getElementById('top-k-input').value = state.topK;
+
+  document.getElementById('max-tokens-val').innerText = state.maxTokens;
+  document.getElementById('temperature-val').innerText = state.temperature;
+  document.getElementById('top-p-val').innerText = state.topP;
+  document.getElementById('top-k-val').innerText = state.topK;
 }
 
-function saveSettings() {
+document.getElementById('max-tokens-input').addEventListener('input', e => document.getElementById('max-tokens-val').innerText = e.target.value);
+document.getElementById('temperature-input').addEventListener('input', e => document.getElementById('temperature-val').innerText = e.target.value);
+document.getElementById('top-p-input').addEventListener('input', e => document.getElementById('top-p-val').innerText = e.target.value);
+document.getElementById('top-k-input').addEventListener('input', e => document.getElementById('top-k-val').innerText = e.target.value);
+
+async function saveSettings() {
   state.apiKey       = document.getElementById('api-key-input').value.trim();
   state.systemPrompt = document.getElementById('system-prompt-input').value.trim();
+  state.maxTokens    = parseInt(document.getElementById('max-tokens-input').value, 10);
+  state.temperature  = parseFloat(document.getElementById('temperature-input').value);
+  state.topP         = parseFloat(document.getElementById('top-p-input').value);
+  state.topK         = parseInt(document.getElementById('top-k-input').value, 10);
+
+  const encryptedKey = await encryptData(state.apiKey);
+
   localStorage.setItem('neuralchat_settings', JSON.stringify({
-    apiKey:       state.apiKey,
+    apiKeyEncrypted: encryptedKey,
     systemPrompt: state.systemPrompt,
+    maxTokens:    state.maxTokens,
+    temperature:  state.temperature,
+    topP:         state.topP,
+    topK:         state.topK
   }));
   showToast('✅ Настройки сохранены', 'success');
   closeSettings();
@@ -976,6 +1156,42 @@ $settingsBtn.addEventListener('click', openSettings);
 $settingsClose.addEventListener('click', closeSettings);
 $settingsOverlay.addEventListener('click', closeSettings);
 $settingsSave.addEventListener('click', saveSettings);
+
+function openSidebar()  { loadSessionsList(); $sidebar.classList.add('open'); $sidebarOverlay.classList.add('open'); }
+function closeSidebar() { $sidebar.classList.remove('open'); $sidebarOverlay.classList.remove('open'); }
+
+$sidebarToggle.addEventListener('click', openSidebar);
+$sidebarClose.addEventListener('click', closeSidebar);
+$sidebarOverlay.addEventListener('click', closeSidebar);
+$newChatBtn.addEventListener('click', () => {
+  const newId = crypto.randomUUID();
+  localStorage.setItem('neuralchat_session', newId);
+  state.sessionId = newId;
+  closeSidebar();
+  loadHistory();
+});
+
+async function loadSessionsList() {
+  try {
+    const res = await fetch('/sessions');
+    const data = await res.json();
+    $sessionsList.innerHTML = '';
+    data.sessions.forEach(s => {
+      const div = document.createElement('div');
+      div.className = `session-item ${s.session_id === state.sessionId ? 'active' : ''}`;
+      div.innerText = `Чат ${s.session_id.substring(0, 8)} (${s.msg_count} сообщ.)`;
+      div.onclick = () => {
+        state.sessionId = s.session_id;
+        localStorage.setItem('neuralchat_session', s.session_id);
+        closeSidebar();
+        loadHistory();
+      };
+      $sessionsList.appendChild(div);
+    });
+  } catch (e) {
+    console.error('Ошибка загрузки сессий', e);
+  }
+}
 
 
 // ════════════════════════════════════════════════════════════════
@@ -1062,6 +1278,9 @@ function appendAssistantMessage() {
   wrapper.innerHTML = `
     <div class="msg-avatar">🤖</div>
     <div class="msg-content-wrap">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
+        <button class="btn btn-icon tts-btn" title="Озвучить (TTS)" style="font-size:12px; padding:2px;">🔊</button>
+      </div>
       <div class="msg-bubble">
         <div class="typing-indicator">
           <span class="typing-dot"></span>
@@ -1122,7 +1341,8 @@ function renderSafeMarkdown(text) {
   html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (m, i) => mathBlocks[i]);
   html = html.replace(/@@MATH_INLINE_(\d+)@@/g, (m, i) => mathBlocks[i]);
 
-  return html;
+  // 5. Санитизация через DOMPurify
+  return DOMPurify.sanitize(html);
 }
 
 function appendUserMessage(text) {
@@ -1313,9 +1533,11 @@ $confirmOverlay.addEventListener('click', (e) => {
 // ОТПРАВКА СООБЩЕНИЯ И ОБРАБОТКА SSE
 // ════════════════════════════════════════════════════════════════
 
+let pendingFiles = [];
+
 async function sendMessage() {
   const text = $msgInput.value.trim();
-  if (!text || state.isGenerating) return;
+  if (!text && pendingFiles.length === 0 || state.isGenerating) return;
 
   if (!state.apiKey) {
     showToast('⚠️ Введите API-ключ в настройках', 'error');
@@ -1328,7 +1550,12 @@ async function sendMessage() {
   $msgInput.value    = '';
   autoResizeTextarea();
 
-  appendUserMessage(text);
+  appendUserMessage(text || "(Вложения)");
+
+  const filesToSend = [...pendingFiles];
+  pendingFiles = [];
+  document.getElementById('attachments-preview').innerHTML = '';
+
   const { bubble: assistantBubble, modelBadge: msgModelBadge } = appendAssistantMessage();
 
   // Показываем анимацию роутинга в шапке
@@ -1344,6 +1571,11 @@ async function sendMessage() {
         api_key:       state.apiKey,
         model:         'auto',   // Модель выбирается на бэкенде
         system_prompt: state.systemPrompt,
+        max_tokens:    state.maxTokens,
+        temperature:   state.temperature,
+        top_p:         state.topP,
+        top_k:         state.topK,
+        files:         filesToSend
       }),
     });
 
@@ -1593,6 +1825,163 @@ $msgInput.addEventListener('keydown', (e) => {
     sendMessage();
   }
 });
+
+  // ════════════════════════════════════════════════════════════════
+  // ОБРАБОТКА ФАЙЛОВ (DRAG & DROP, КНОПКА)
+  // ════════════════════════════════════════════════════════════════
+  const $attachBtn = document.getElementById('attach-btn');
+  const $fileInput = document.getElementById('file-input');
+  const $dropOverlay = document.getElementById('drop-overlay');
+  const $previewArea = document.getElementById('attachments-preview');
+
+  $attachBtn.addEventListener('click', () => $fileInput.click());
+
+  $fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+    e.target.value = ''; // сброс
+  });
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+      $dropOverlay.style.display = 'flex';
+    }
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null || e.target === $dropOverlay) {
+      $dropOverlay.style.display = 'none';
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    $dropOverlay.style.display = 'none';
+    handleFiles(e.dataTransfer.files);
+  });
+
+  async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        pendingFiles.push({
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          data: dataUrl
+        });
+
+        // Рендер превью
+        const pill = document.createElement('div');
+        pill.className = 'attachment-pill';
+        pill.style.display = 'inline-flex';
+        pill.style.alignItems = 'center';
+        pill.style.gap = '4px';
+        pill.style.padding = '2px 8px';
+        pill.style.background = 'rgba(0, 245, 255, 0.1)';
+        pill.style.border = '1px solid rgba(0, 245, 255, 0.3)';
+        pill.style.borderRadius = '12px';
+        pill.style.fontSize = '11px';
+        pill.style.color = 'var(--accent-cyan)';
+
+        let icon = '📎';
+        if (file.type.startsWith('image/')) icon = '🖼️';
+        if (file.type.startsWith('video/')) icon = '🎥';
+        if (file.type === 'application/pdf') icon = '📄';
+
+        pill.innerHTML = `<span>${icon} ${file.name}</span><button style="background:none;border:none;color:inherit;cursor:pointer;font-size:10px;">✕</button>`;
+        pill.querySelector('button').onclick = () => {
+          pendingFiles = pendingFiles.filter(f => f.name !== file.name);
+          pill.remove();
+        };
+
+        $previewArea.appendChild(pill);
+      };
+
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // WEB SPEECH API (STT / TTS)
+  // ════════════════════════════════════════════════════════════════
+  let recognition = null;
+  let isRecording = false;
+
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      $msgInput.value += ($msgInput.value ? ' ' : '') + transcript;
+      autoResizeTextarea();
+    };
+
+    recognition.onerror = (e) => {
+      console.error('Speech recognition error', e.error);
+      showToast('Ошибка распознавания речи: ' + e.error, 'error');
+      stopRecording();
+    };
+
+    recognition.onend = () => {
+      stopRecording();
+    };
+  }
+
+  function stopRecording() {
+    isRecording = false;
+    document.getElementById('mic-btn').classList.remove('recording');
+    document.getElementById('mic-btn').style.background = '';
+    document.getElementById('mic-btn').style.animation = '';
+  }
+
+  document.getElementById('mic-btn').addEventListener('click', () => {
+    if (!recognition) {
+      showToast('Голосовой ввод не поддерживается в этом браузере.', 'error');
+      return;
+    }
+
+    if (isRecording) {
+      recognition.stop();
+      stopRecording();
+    } else {
+      try {
+        recognition.start();
+        isRecording = true;
+        document.getElementById('mic-btn').classList.add('recording');
+        document.getElementById('mic-btn').style.background = 'rgba(239, 68, 68, 0.2)';
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.tts-btn')) {
+      const btn = e.target.closest('.tts-btn');
+      const textContainer = btn.closest('.msg-content-wrap').querySelector('.msg-bubble');
+      // Очищаем от HTML тегов
+      let textToSpeak = textContainer.innerText || textContainer.textContent;
+      textToSpeak = textToSpeak.replace(/<[^>]*>?/gm, '');
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Остановить предыдущее
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = 'ru-RU';
+        window.speechSynthesis.speak(utterance);
+      } else {
+        showToast('TTS не поддерживается вашим браузером.', 'error');
+      }
+    }
+  });
 
 $sendBtn.addEventListener('click', sendMessage);
 

@@ -12,6 +12,7 @@ from config import (
 from services.state import _get_session_history, _append_to_history, pending_tool_calls, tool_call_events, tool_call_decisions
 from services.computer import _run_computer_control
 from services.tools import _classify_command, _run_shell_stream
+from database import _db_save_memory, _db_load_memory
 
 # Здесь мы выносим TOOLS как константу для agent.py
 TOOLS: list[dict] = [
@@ -95,6 +96,10 @@ async def _call_openrouter(
     api_key:  str,
     model:    str,
     tools:    list[dict] | None = None,
+    max_tokens: int | None = 4096,
+    temperature: float | None = 0.7,
+    top_p: float | None = 1.0,
+    top_k: int | None = 0,
 ) -> dict:
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -105,8 +110,10 @@ async def _call_openrouter(
     payload: dict[str, Any] = {
         "model":       model,
         "messages":    messages,
-        "temperature": 0.7,
-        "max_tokens":  4096,
+        "temperature": temperature if temperature is not None else 0.7,
+        "max_tokens":  max_tokens if max_tokens is not None else 4096,
+        "top_p":       top_p if top_p is not None else 1.0,
+        "top_k":       top_k if top_k is not None else 0,
     }
     if tools:
         payload["tools"]       = tools
@@ -146,14 +153,61 @@ async def _route_model(message: str, api_key: str) -> str:
         logger.warning(f"[Оркестратор] Ошибка роутинга ({exc}), используем fallback: {ROUTING_FALLBACK}")
         return ROUTING_FALLBACK
 
+import urllib.parse
+
 async def _agent_loop(
     session_id:    str,
     api_key:       str,
     model:         str,
     system_prompt: str,
+    max_tokens:    int | None = None,
+    temperature:   float | None = None,
+    top_p:         float | None = None,
+    top_k:         int | None = None,
 ):
     def sse(t: str, payload: dict) -> str:
         return "data: " + json.dumps({"type": t, **payload}, ensure_ascii=False) + "\n\n"
+
+    history = await _get_session_history(session_id)
+    last_user_msg = history[-1]["content"] if history and history[-1]["role"] == "user" else ""
+
+    if last_user_msg:
+        # Background check for memory extraction
+        memory_sys_prompt = (
+            "You are a memory extractor. Analyze the user message and extract ONLY key personal facts about the user "
+            "(e.g., name, preferences, job, location). If there is a key fact, return it as a concise string. "
+            "If there is no key fact, return 'NO_FACT'."
+        )
+        try:
+            mem_resp = await _call_openrouter(
+                messages=[{"role": "system", "content": memory_sys_prompt}, {"role": "user", "content": last_user_msg}],
+                api_key=api_key,
+                model="google/gemini-3.1-flash-lite-preview",
+            )
+            fact = mem_resp["choices"][0]["message"]["content"].strip()
+            if fact and fact != "NO_FACT" and "NO_FACT" not in fact:
+                await _db_save_memory(fact)
+                logger.info(f"[{session_id}] Сохранен факт в память: {fact}")
+        except Exception as e:
+            logger.warning(f"[{session_id}] Ошибка извлечения памяти: {e}")
+
+    # Inject memory
+    saved_memories = await _db_load_memory()
+    if saved_memories:
+        memory_context = "\n".join(f"- {m}" for m in saved_memories)
+        system_prompt += f"\n\nMemory Context:\n{memory_context}"
+
+    if model == "image_generation":
+        yield sse("thinking", {"message": "Генерирую изображение..."})
+        safe_prompt = urllib.parse.quote(last_user_msg)
+        image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}"
+        content = f"Вот ваше изображение:\n\n![Сгенерированное изображение]({image_url})"
+
+        msg = {"role": "assistant", "content": content}
+        await _append_to_history(session_id, msg)
+        yield sse("assistant_message", {"content": content})
+        yield sse("done", {})
+        return
 
     for iteration in range(10):
         history = await _get_session_history(session_id)
@@ -162,7 +216,10 @@ async def _agent_loop(
 
         try:
             yield sse("thinking", {"message": "Обрабатываю..."})
-            resp = await _call_openrouter(messages, api_key, model, TOOLS)
+            resp = await _call_openrouter(
+                messages, api_key, model, TOOLS,
+                max_tokens=max_tokens, temperature=temperature, top_p=top_p, top_k=top_k
+            )
         except Exception as exc:
             yield sse("error", {"message": str(exc)})
             return

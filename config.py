@@ -19,6 +19,7 @@ ROUTING_MAP: dict[str, str] = {
     "coding":      "anthropic/claude-4.6-sonnet",    # Программирование / агентные задачи
     "vision":      "google/gemini-3.1-pro-preview",          # Анализ изображений / скриншотов
     "chat":        "x-ai/grok-4.3",                  # Обычный разговор
+    "image_generation": "image_generation",          # Генерация изображений (перехватывается локально)
 }
 ROUTING_FALLBACK = "anthropic/claude-4.6-sonnet"     # Если оркестратор вернул мусор
 
@@ -29,6 +30,7 @@ Rules:
 2. "coding" — programming, code generation, debugging, terminal/tool use, file operations
 3. "vision" — image analysis, screenshots, visual content description
 4. "chat"   — general conversation, questions, writing, translation
+5. "image_generation" — intent to generate, draw, or create an image (triggers: "нарисуй", "создай изображение", "сгенерируй картинку", "draw", "generate image")
 
 CRITICAL INSTRUCTION:
 Ignore conversational greetings ("привет", "hello", "пожалуйста"). Focus ONLY on the core action.
